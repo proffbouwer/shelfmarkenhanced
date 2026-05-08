@@ -113,6 +113,13 @@ WHERE dismissed_at IS NOT NULL AND cleared_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_activity_view_state_hidden
 ON activity_view_state (viewer_scope, item_type, item_key)
 WHERE dismissed_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+    username       TEXT PRIMARY KEY,
+    attempt_count  INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    locked_until   TIMESTAMP
+);
 """
 
 
