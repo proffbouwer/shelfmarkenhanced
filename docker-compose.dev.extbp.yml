@@ -1,0 +1,25 @@
+# Local development - External bypasser variant (lite)
+services:
+  shelfmark-lite-dev:
+    extends:
+      file: ./compose/docker-compose.lite.yml
+      service: shelfmark-lite
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: shelfmark-lite
+    environment:
+      DEBUG: true
+      EXT_BYPASSER_URL: http://flaresolverr:8191
+      EXT_BYPASSER_PATH: /v1
+      EXT_BYPASSER_TIMEOUT: 60000
+    volumes:
+      - ./.local/config:/config
+      - ./.local/books:/books
+      - ./.local/log:/var/log/shelfmark
+      - ./.local/tmp:/tmp/shelfmark
+      # Required for torrent / usenet - path must match your download client's volume exactly
+      # - /path/to/downloads:/path/to/downloads
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest

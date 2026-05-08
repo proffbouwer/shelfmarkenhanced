@@ -1,0 +1,120 @@
+import type { Release } from '../types';
+import { isRecord, toComparableText } from './objectHelpers';
+import { getReleaseFormats } from './releaseFormats';
+
+export interface SortState {
+  key: string;
+  direction: 'asc' | 'desc';
+  value?: string;
+}
+
+export const FORMAT_SORT_KEY = '_format_priority';
+
+// LocalStorage helpers for persisting sort preferences per source
+const SORT_STORAGE_PREFIX = 'cwa-bd-release-sort-';
+
+const isSortState = (value: unknown): value is SortState => {
+  return (
+    isRecord(value) &&
+    typeof value.key === 'string' &&
+    (value.direction === 'asc' || value.direction === 'desc') &&
+    (value.value === undefined || typeof value.value === 'string')
+  );
+};
+
+export function getSavedSort(sourceName: string): SortState | null {
+  try {
+    const saved = localStorage.getItem(`${SORT_STORAGE_PREFIX}${sourceName}`);
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved);
+      if (isSortState(parsed)) {
+        return parsed;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSort(sourceName: string, sortState: SortState): void {
+  try {
+    localStorage.setItem(`${SORT_STORAGE_PREFIX}${sourceName}`, JSON.stringify(sortState));
+  } catch {
+    // localStorage may be unavailable in private browsing
+  }
+}
+
+export function clearSort(sourceName: string): void {
+  try {
+    localStorage.removeItem(`${SORT_STORAGE_PREFIX}${sourceName}`);
+  } catch {
+    // localStorage may be unavailable in private browsing
+  }
+}
+
+// Get nested value from an object using dot notation path
+function getNestedSortValue(obj: unknown, path: string): unknown {
+  return path.split('.').reduce((current, key) => {
+    if (isRecord(current) && key in current) {
+      return current[key];
+    }
+    return undefined;
+  }, obj);
+}
+
+// Infer default sort direction from column render type
+export function inferDefaultDirection(renderType: string): 'asc' | 'desc' {
+  // Numeric types sort descending by default (bigger is usually better)
+  if (renderType === 'size' || renderType === 'number' || renderType === 'peers') {
+    return 'desc';
+  }
+  // Text/badge types sort ascending (alphabetical)
+  return 'asc';
+}
+
+// Sort releases by format priority - matching releases come first (asc) or last (desc)
+export function sortReleasesByFormat(
+  releases: Release[],
+  targetFormat: string,
+  direction: 'asc' | 'desc',
+): Release[] {
+  const target = targetFormat.toLowerCase();
+  return releases.toSorted((a, b) => {
+    const aFormats = getReleaseFormats(a);
+    const bFormats = getReleaseFormats(b);
+    const aMatch = aFormats.includes(target) ? 1 : 0;
+    const bMatch = bFormats.includes(target) ? 1 : 0;
+    if (aMatch === bMatch) return 0;
+    // asc = matching first, desc = matching last
+    return direction === 'asc' ? bMatch - aMatch : aMatch - bMatch;
+  });
+}
+
+// Sort releases by a column
+export function sortReleases(
+  releases: Release[],
+  sortKey: string,
+  direction: 'asc' | 'desc',
+): Release[] {
+  return releases.toSorted((a, b) => {
+    const aVal = getNestedSortValue(a, sortKey);
+    const bVal = getNestedSortValue(b, sortKey);
+
+    // Handle null/undefined - sort them to the end
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+
+    // Numeric comparison
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return direction === 'asc' ? aVal - bVal : bVal - aVal;
+    }
+
+    // String comparison (case-insensitive)
+    const aStr = toComparableText(aVal).toLowerCase();
+    const bStr = toComparableText(bVal).toLowerCase();
+    const cmp = aStr.localeCompare(bStr);
+    return direction === 'asc' ? cmp : -cmp;
+  });
+}

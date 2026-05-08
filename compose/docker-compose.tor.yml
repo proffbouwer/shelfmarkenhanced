@@ -1,0 +1,20 @@
+# Routes all traffic through Tor - requires root startup
+services:
+  shelfmark-tor:
+    image: ghcr.io/calibrain/shelfmark:latest
+    environment:
+      FLASK_PORT: 8084
+      USING_TOR: true
+      PUID: 1000
+      PGID: 1000
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    volumes:
+      - /path/to/books:/books # Default destination for book downloads
+      - /path/to/config:/config # App configuration
+      # Required for torrent / usenet - path must match your download client's volume exactly
+      # - /path/to/downloads:/path/to/downloads

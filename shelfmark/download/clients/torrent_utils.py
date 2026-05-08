@@ -1,0 +1,355 @@
+"""Shared utilities for torrent clients."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import re
+from binascii import Error as BinasciiError
+from dataclasses import dataclass
+from urllib.parse import parse_qs, urljoin, urlparse
+
+import requests
+
+from shelfmark.core.config import config
+from shelfmark.core.logger import setup_logger
+from shelfmark.download.network import get_ssl_verify
+
+logger = setup_logger(__name__)
+
+_MAGNET_RESPONSE_MAX_BYTES = 2000
+_BASE32_BTMH_TAG_BYTES = 34
+_BTIH_INFO_BYTE_HEX = 0x20
+_BTIH_PREFIX_BYTE = 0x12
+_BTIH_DIGEST_LENGTH = 32
+_BTIH_HASH_LENGTH_40 = 40
+_BTIH_HASH_LENGTH_32 = 32
+_TORRENT_FETCH_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+_TORRENT_PARSE_ERRORS = (IndexError, KeyError, TypeError, ValueError)
+
+type BencodeValue = dict[str | bytes, BencodeValue] | list[BencodeValue] | int | bytes | str
+
+
+@dataclass
+class TorrentInfo:
+    """Parsed information from a torrent URL."""
+
+    info_hash: str | None
+    """Lowercase hex info_hash (32 or 40 chars), or None if extraction failed."""
+
+    torrent_data: bytes | None
+    """Raw .torrent file content, only populated for .torrent URLs."""
+
+    is_magnet: bool
+    """True if the URL was a magnet link."""
+
+    magnet_url: str | None = None
+    """The actual magnet URL, if available."""
+
+    def with_info_hash(self, info_hash: str | None) -> TorrentInfo:
+        """Return a copy with the info_hash replaced when provided."""
+        if info_hash:
+            return TorrentInfo(
+                info_hash=info_hash,
+                torrent_data=self.torrent_data,
+                is_magnet=self.is_magnet,
+                magnet_url=self.magnet_url,
+            )
+        return self
+
+
+def extract_torrent_info(
+    url: str,
+    *,
+    fetch_torrent: bool = True,
+    expected_hash: str | None = None,
+) -> TorrentInfo:
+    """Extract info_hash from magnet link or .torrent URL.
+
+    Notes:
+        When the URL points at Prowlarr's proxied download endpoint, it typically
+        requires the `X-Api-Key` header. If `PROWLARR_API_KEY` is configured,
+        include it for the torrent fetch request.
+
+        Redirects to magnet links are handled explicitly so we can extract a
+        hash from the magnet when available.
+
+    """
+    is_magnet = url.startswith("magnet:")
+
+    # Try to extract hash from magnet URL
+    if is_magnet:
+        info_hash = extract_hash_from_magnet(url)
+        if not info_hash and expected_hash:
+            info_hash = expected_hash
+        return TorrentInfo(info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=url)
+
+    # Not a magnet - try to fetch and parse the .torrent file
+    if not fetch_torrent:
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+
+    headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
+    # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
+    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+    if api_key:
+        headers["X-Api-Key"] = api_key
+
+    def resolve_url(current: str, location: str) -> str:
+        if not location:
+            return current
+        # Support relative redirect locations
+        return urljoin(current, location)
+
+    try:
+        logger.debug("Fetching torrent file from: %s...", url[:80])
+
+        # Use allow_redirects=False to handle magnet link redirects manually
+        # Some indexers redirect download URLs to magnet links
+        resp = requests.get(
+            url,
+            timeout=30,
+            allow_redirects=False,
+            headers=headers,
+            verify=get_ssl_verify(url),
+        )
+
+        # Check if this is a redirect to a magnet link
+        if resp.status_code in (301, 302, 303, 307, 308):
+            redirect_url = resolve_url(url, resp.headers.get("Location", ""))
+            if redirect_url.startswith("magnet:"):
+                logger.debug("Download URL redirected to magnet link")
+                info_hash = extract_hash_from_magnet(redirect_url)
+                if not info_hash and expected_hash:
+                    info_hash = expected_hash
+                return TorrentInfo(
+                    info_hash=info_hash,
+                    torrent_data=None,
+                    is_magnet=True,
+                    magnet_url=redirect_url,
+                )
+            # Not a magnet redirect, follow it manually
+            logger.debug("Following redirect to: %s...", redirect_url[:80])
+            resp = requests.get(
+                redirect_url,
+                timeout=30,
+                headers=headers,
+                verify=get_ssl_verify(redirect_url),
+            )
+
+        resp.raise_for_status()
+        torrent_data = resp.content
+
+        # Check if response is actually a magnet link (text response)
+        # Some indexers return magnet links as plain text instead of redirecting
+        if len(torrent_data) < _MAGNET_RESPONSE_MAX_BYTES:  # Magnet links are typically short
+            text_content = torrent_data.decode("utf-8", errors="ignore").strip()
+            if text_content.startswith("magnet:"):
+                logger.debug("Download URL returned magnet link as response body")
+                info_hash = extract_hash_from_magnet(text_content)
+                if not info_hash and expected_hash:
+                    info_hash = expected_hash
+                return TorrentInfo(
+                    info_hash=info_hash,
+                    torrent_data=None,
+                    is_magnet=True,
+                    magnet_url=text_content,
+                )
+
+        info_hash = extract_info_hash_from_torrent(torrent_data) or expected_hash
+        if info_hash:
+            logger.debug("Extracted hash from torrent file: %s", info_hash)
+        else:
+            logger.warning("Could not extract hash from torrent file")
+        return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
+    except _TORRENT_FETCH_ERRORS as e:
+        logger.debug("Could not fetch torrent file: %s", e)
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+
+
+def parse_transmission_url(url: str) -> tuple[str, str, int, str]:
+    """Parse Transmission URL into (protocol, host, port, path)."""
+    parsed = urlparse(url)
+    protocol = (parsed.scheme or "http").lower()
+    if protocol not in ("http", "https"):
+        protocol = "http"
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 9091
+    path = parsed.path or "/transmission/rpc"
+
+    # Ensure path ends with /rpc
+    if not path.endswith("/rpc"):
+        path = path.rstrip("/") + "/transmission/rpc"
+
+    return protocol, host, port, path
+
+
+def bencode_decode(data: bytes) -> tuple:
+    """Decode bencoded data. Returns (value, remaining_bytes)."""
+    if data[0:1] == b"d":
+        # Dictionary
+        result = {}
+        data = data[1:]
+        while data[0:1] != b"e":
+            key, data = bencode_decode(data)
+            value, data = bencode_decode(data)
+            result[key] = value
+        return result, data[1:]
+    if data[0:1] == b"l":
+        # List
+        result = []
+        data = data[1:]
+        while data[0:1] != b"e":
+            value, data = bencode_decode(data)
+            result.append(value)
+        return result, data[1:]
+    if data[0:1] == b"i":
+        # Integer
+        end = data.index(b"e")
+        return int(data[1:end]), data[end + 1 :]
+    if data[0:1].isdigit():
+        # Byte string
+        colon = data.index(b":")
+        length = int(data[:colon])
+        start = colon + 1
+        return data[start : start + length], data[start + length :]
+    first_byte = data[0:1]
+    msg = (
+        f"Invalid bencode data: expected 'd', 'l', 'i', or digit, "
+        f"got {first_byte!r}. First 20 bytes: {data[:20]!r}"
+    )
+    raise ValueError(msg)
+
+
+def bencode_encode(data: BencodeValue) -> bytes:
+    """Encode data to bencode format."""
+    if isinstance(data, dict):
+        # Keys must be sorted (bencode spec requirement)
+        result = b"d"
+        for key in sorted(data.keys()):
+            result += bencode_encode(key)
+            result += bencode_encode(data[key])
+        result += b"e"
+        return result
+    if isinstance(data, list):
+        result = b"l"
+        for item in data:
+            result += bencode_encode(item)
+        result += b"e"
+        return result
+    if isinstance(data, int):
+        return f"i{data}e".encode()
+    if isinstance(data, bytes):
+        return f"{len(data)}:".encode() + data
+    if isinstance(data, str):
+        encoded = data.encode("utf-8")
+        return f"{len(encoded)}:".encode() + encoded
+    msg = (
+        f"Cannot bencode type {type(data).__name__}: "
+        f"expected dict, list, int, bytes, or str. Value: {data!r}"
+    )
+    raise ValueError(msg)
+
+
+def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
+    """Extract info_hash from .torrent file data."""
+    try:
+        decoded, _ = bencode_decode(torrent_data)
+        if b"info" not in decoded:
+            return None
+
+        info_bencoded = bencode_encode(decoded[b"info"])
+        info_dict = decoded[b"info"]
+        if isinstance(info_dict, dict) and b"pieces" in info_dict:
+            # BitTorrent v1 info hashes are defined as SHA-1.
+            return hashlib.sha1(info_bencoded).hexdigest().lower()  # noqa: S324
+        return hashlib.sha256(info_bencoded).hexdigest().lower()
+    except _TORRENT_PARSE_ERRORS as e:
+        logger.debug("Failed to parse torrent file: %s", e)
+        return None
+
+
+def extract_hash_from_magnet(magnet_url: str) -> str | None:
+    """Extract info_hash from a magnet URL."""
+    if not magnet_url.startswith("magnet:"):
+        return None
+
+    parsed = urlparse(magnet_url)
+    params = parse_qs(parsed.query)
+
+    def extract_btmh(value: str) -> str | None:
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+
+        data: bytes | None = None
+        if re.fullmatch(r"[a-fA-F0-9]+", raw_value):
+            if len(raw_value) % 2 != 0:
+                return None
+            try:
+                data = bytes.fromhex(raw_value)
+            except ValueError:
+                return None
+        else:
+            padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
+            try:
+                data = base64.b32decode(padded, casefold=True)
+            except BinasciiError, ValueError:
+                return None
+
+        if not data:
+            return None
+
+        if (
+            len(data) >= _BASE32_BTMH_TAG_BYTES
+            and data[0] == _BTIH_PREFIX_BYTE
+            and data[1] == _BTIH_INFO_BYTE_HEX
+        ):
+            digest = data[2:_BASE32_BTMH_TAG_BYTES]
+            if len(digest) == _BTIH_DIGEST_LENGTH:
+                return digest.hex().lower()
+
+        if len(data) == _BTIH_HASH_LENGTH_32:
+            return data.hex().lower()
+
+        return None
+
+    xt_values = params.get("xt", [])
+
+    for xt in xt_values:
+        # Format: urn:btih:<hash> (32 or 40 chars)
+        match = re.match(r"urn:btih:([a-fA-F0-9]{40}|[a-zA-Z0-9]{32})", xt)
+        if match:
+            hash_value = match.group(1)
+
+            # 40-char hex or 32-char hex (ED2K) - return as-is
+            if len(hash_value) == _BTIH_HASH_LENGTH_40 or re.match(
+                r"^[a-fA-F0-9]{32}$", hash_value
+            ):
+                return hash_value.lower()
+
+            # 32-char base32 - decode to hex
+            if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
+                try:
+                    return base64.b32decode(hash_value.upper()).hex().lower()
+                except BinasciiError, ValueError:
+                    logger.debug(
+                        "Could not decode base32 BTIH hash from magnet URI: %s", hash_value
+                    )
+
+            # Fallback: return as-is
+            return hash_value.lower()
+
+    for xt in xt_values:
+        if xt.startswith("urn:btmh:"):
+            btmh_value = xt[len("urn:btmh:") :]
+            btmh_hash = extract_btmh(btmh_value)
+            if btmh_hash:
+                return btmh_hash
+
+    return None

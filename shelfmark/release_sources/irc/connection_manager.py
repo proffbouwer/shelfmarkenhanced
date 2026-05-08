@@ -1,0 +1,253 @@
+"""IRC connection manager.
+
+Maintains persistent IRC connections to avoid reconnecting between search and download.
+"""
+
+import threading
+import time
+from contextlib import suppress
+from typing import Self
+
+from shelfmark.core.logger import setup_logger
+
+from .client import IRCClient, IRCError
+
+logger = setup_logger(__name__)
+
+# How long to keep an idle connection before closing it
+IDLE_TIMEOUT = 300.0  # 5 minutes
+_IRC_CONNECTION_ERRORS = (IRCError, OSError, RuntimeError)
+
+
+class IRCConnectionManager:
+    """Manages persistent IRC connections.
+
+    Keeps connections alive between search and download operations to avoid
+    the overhead of reconnecting. Connections are automatically closed after
+    being idle for IDLE_TIMEOUT seconds.
+    """
+
+    _instance: Self | None = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> Self:
+        """Singleton pattern - only one connection manager."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self) -> None:
+        """Initialize connection caches for the singleton manager."""
+        if self._initialized:
+            return
+
+        self._connections: dict[str, IRCClient] = {}
+        self._last_used: dict[str, float] = {}
+        self._channels: dict[str, str] = {}  # connection_key -> joined channel
+        self._connecting: dict[str, bool] = {}  # Track keys currently being connected
+        self._conn_lock = threading.Lock()
+        self._cleanup_thread: threading.Thread | None = None
+        self._running = True
+        self._initialized = True
+
+        # Start background cleanup thread
+        self._start_cleanup_thread()
+
+    def _connection_key(self, server: str, port: int, nick: str) -> str:
+        """Generate a unique key for a connection."""
+        return f"{server}:{port}:{nick}"
+
+    def _start_cleanup_thread(self) -> None:
+        """Start background thread to clean up idle connections."""
+
+        def cleanup_loop() -> None:
+            while self._running:
+                time.sleep(30)  # Check every 30 seconds
+                self._cleanup_idle_connections()
+
+        self._cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+        self._cleanup_thread.start()
+
+    def _cleanup_idle_connections(self) -> None:
+        """Close connections that have been idle too long."""
+        now = time.time()
+        to_remove = []
+
+        with self._conn_lock:
+            for key, last_used in list(self._last_used.items()):
+                if now - last_used > IDLE_TIMEOUT:
+                    to_remove.append(key)
+
+            for key in to_remove:
+                client = self._connections.pop(key, None)
+                self._last_used.pop(key, None)
+                self._channels.pop(key, None)
+
+                if client:
+                    logger.info("Closing idle IRC connection: %s", key)
+                    try:
+                        client.disconnect()
+                    except _IRC_CONNECTION_ERRORS as e:
+                        logger.debug("Error closing idle connection: %s", e)
+
+    def get_connection(
+        self,
+        server: str,
+        port: int,
+        nick: str,
+        *,
+        use_tls: bool,
+        channel: str,
+    ) -> IRCClient:
+        """Get or create an IRC connection.
+
+        If an existing connection to the same server/port/nick exists and is
+        still connected, it will be reused. Otherwise, a new connection is created.
+
+        Args:
+            server: IRC server hostname
+            port: IRC server port
+            nick: IRC nickname
+            use_tls: Whether to use TLS
+            channel: Channel to join (without # prefix)
+
+        Returns:
+            Connected IRCClient instance that has joined the channel
+
+        """
+        key = self._connection_key(server, port, nick)
+        need_new_connection = False
+        dead_client = None
+
+        with self._conn_lock:
+            # Check for existing connection
+            existing = self._connections.get(key)
+
+            if existing and existing.is_connected:
+                logger.info("Reusing existing IRC connection to %s", server)
+                self._last_used[key] = time.time()
+
+                # Check if we need to join a different channel
+                current_channel = self._channels.get(key)
+                if current_channel != channel:
+                    logger.debug("Joining channel #%s", channel)
+                    existing.join_channel(channel)
+                    self._channels[key] = channel
+
+                return existing
+
+            # Check if another thread is already connecting
+            if self._connecting.get(key):
+                logger.debug("Another thread is connecting to %s, waiting...", key)
+                # Release lock and wait, then retry
+                # Fall through to retry logic below
+            else:
+                # Clean up dead connection if it exists
+                if existing:
+                    logger.debug("Removing dead connection: %s", key)
+                    self._connections.pop(key, None)
+                    self._last_used.pop(key, None)
+                    self._channels.pop(key, None)
+                    dead_client = existing
+
+                # Mark that we're connecting (prevents duplicate attempts)
+                self._connecting[key] = True
+                need_new_connection = True
+
+        # Clean up dead client outside lock
+        if dead_client:
+            with suppress(Exception):
+                dead_client.disconnect()
+
+        # If another thread is connecting, wait and retry
+        if not need_new_connection:
+            time.sleep(0.5)
+            return self.get_connection(
+                server=server,
+                port=port,
+                nick=nick,
+                use_tls=use_tls,
+                channel=channel,
+            )
+
+        # Create new connection OUTSIDE the lock to avoid blocking other threads
+        try:
+            logger.info("Creating new IRC connection to %s:%s", server, port)
+            client = IRCClient(nick, server, port, use_tls=use_tls)
+            client.connect()
+            client.join_channel(channel)
+
+            # Store connection (re-acquire lock)
+            with self._conn_lock:
+                self._connections[key] = client
+                self._last_used[key] = time.time()
+                self._channels[key] = channel
+                self._connecting.pop(key, None)
+        except _IRC_CONNECTION_ERRORS:
+            # Clear connecting flag on failure
+            with self._conn_lock:
+                self._connecting.pop(key, None)
+            raise
+
+        else:
+            return client
+
+    def release_connection(self, client: IRCClient) -> None:
+        """Mark a connection as available for reuse.
+
+        This updates the last-used timestamp to prevent premature cleanup.
+        The connection stays open for potential reuse.
+        """
+        key = self._connection_key(client.server, client.port, client.nick)
+
+        with self._conn_lock:
+            if key in self._connections:
+                self._last_used[key] = time.time()
+                logger.debug("Released IRC connection for reuse: %s", key)
+
+    def close_connection(self, client: IRCClient) -> None:
+        """Explicitly close a connection (e.g., on error).
+
+        Use this when you want to force-close a connection rather than
+        releasing it for reuse.
+        """
+        key = self._connection_key(client.server, client.port, client.nick)
+
+        with self._conn_lock:
+            self._connections.pop(key, None)
+            self._last_used.pop(key, None)
+            self._channels.pop(key, None)
+
+        try:
+            client.disconnect()
+        except _IRC_CONNECTION_ERRORS as e:
+            logger.debug("Error closing connection: %s", e)
+
+        logger.debug("Closed IRC connection: %s", key)
+
+    def close_all(self) -> None:
+        """Close all connections (for shutdown)."""
+        with self._conn_lock:
+            for key, client in list(self._connections.items()):
+                self._close_connection(client, key)
+
+            self._connections.clear()
+            self._last_used.clear()
+            self._channels.clear()
+
+        logger.info("Closed all IRC connections")
+
+    @staticmethod
+    def _close_connection(client: IRCClient, key: str) -> None:
+        """Disconnect one IRC client and log failures."""
+        try:
+            client.disconnect()
+        except _IRC_CONNECTION_ERRORS as e:
+            logger.debug("Error closing connection %s: %s", key, e)
+
+
+# Global singleton instance
+connection_manager = IRCConnectionManager()

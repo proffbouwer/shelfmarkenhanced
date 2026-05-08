@@ -1,0 +1,551 @@
+#!/bin/bash
+
+set -e
+
+is_truthy() {
+    case "${1,,}" in
+        true|yes|1|y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ENABLE_LOGGING_VALUE="${ENABLE_LOGGING:-true}"
+LOG_PIPE_DIR=""
+LOG_PIPE=""
+TEE_PID=""
+FILE_LOGGING_ENABLED="false"
+CURRENT_UID=$(id -u)
+CURRENT_GID=$(id -g)
+RUN_AS_NON_ROOT="false"
+RUNTIME_TMP_DIR="${TMP_DIR:-/tmp/shelfmark}"
+DEFAULT_RUNTIME_HOME="${RUNTIME_TMP_DIR}/home"
+
+if [ "$CURRENT_UID" != "0" ]; then
+    RUN_AS_NON_ROOT="true"
+fi
+
+start_file_logging() {
+    local logfile="$1"
+
+    LOG_PIPE_DIR="$(mktemp -d)"
+    LOG_PIPE="${LOG_PIPE_DIR}/shelfmark-log.pipe"
+    mkfifo "$LOG_PIPE"
+
+    tee -a "$logfile" < "$LOG_PIPE" &
+    TEE_PID=$!
+
+    exec 3>&1 4>&2
+    exec > "$LOG_PIPE" 2>&1
+}
+
+stop_file_logging() {
+    if [ -z "${TEE_PID:-}" ]; then
+        return 0
+    fi
+
+    exec 1>&3 2>&4
+    exec 3>&- 4>&-
+
+    rm -f "$LOG_PIPE"
+    rmdir "$LOG_PIPE_DIR" 2>/dev/null || true
+
+    wait "$TEE_PID" 2>/dev/null || true
+    TEE_PID=""
+}
+
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
+    if mkdir -p "$LOG_DIR" 2>/dev/null; then
+        LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
+        # Keep the previous entrypoint log instead of deleting all history on boot.
+        rotation_ok="true"
+        if [ -f "${LOG_FILE}.prev" ] && ! rm -f "${LOG_FILE}.prev"; then
+            echo "Warning: could not remove previous entrypoint log ${LOG_FILE}.prev, continuing without file logging" >&2
+            rotation_ok="false"
+        fi
+        if [ "$rotation_ok" = "true" ] && [ -f "$LOG_FILE" ] && ! mv "$LOG_FILE" "${LOG_FILE}.prev"; then
+            echo "Warning: could not rotate entrypoint log $LOG_FILE, continuing without file logging" >&2
+            rotation_ok="false"
+        fi
+
+        if [ "$rotation_ok" = "true" ]; then
+            FILE_LOGGING_ENABLED="true"
+        else
+            ENABLE_LOGGING_VALUE="false"
+            export ENABLE_LOGGING="false"
+        fi
+    else
+        echo "Warning: could not create log directory $LOG_DIR, continuing without file logging" >&2
+        ENABLE_LOGGING_VALUE="false"
+        export ENABLE_LOGGING="false"
+    fi
+fi
+
+if [ "$USING_TOR" = "true" ]; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "USING_TOR=true requires the container to start as root." >&2
+        echo "Non-root mode skips the privileged filesystem and network setup Tor depends on." >&2
+        exit 1
+    fi
+    ./tor.sh
+fi
+
+if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
+    start_file_logging "$LOG_FILE"
+fi
+
+echo "Starting entrypoint script"
+if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
+    echo "Log file: $LOG_FILE"
+else
+    echo "File logging disabled (ENABLE_LOGGING=$ENABLE_LOGGING_VALUE)"
+fi
+
+PYTHON_BIN="/app/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="python3"
+fi
+
+# Defensive: some orchestrators (e.g. Unraid Dockhand templates) inject a default
+# PATH that drops the venv bin directory baked in by the Dockerfile. Prepend it
+# so subprocesses launched without an absolute path still resolve correctly.
+case ":${PATH}:" in
+    *":/app/.venv/bin:"*) ;;
+    *) export PATH="/app/.venv/bin:${PATH}" ;;
+esac
+GUNICORN_BIN="/app/.venv/bin/gunicorn"
+if [ ! -x "$GUNICORN_BIN" ]; then
+    GUNICORN_BIN="gunicorn"
+fi
+
+# Print build version
+echo "Build version: $BUILD_VERSION"
+echo "Release version: $RELEASE_VERSION"
+
+# Configure timezone
+if [ "$TZ" ]; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "TZ is set to $TZ (non-root mode leaves /etc/localtime unchanged)"
+    else
+        echo "Setting timezone to $TZ"
+        ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+    fi
+fi
+
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    RUN_UID="$CURRENT_UID"
+    RUN_GID="$CURRENT_GID"
+    USERNAME=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f1 || true)
+    if [ -z "$USERNAME" ]; then
+        USERNAME="$RUN_UID"
+        echo "No passwd entry found for UID $RUN_UID; using numeric identity"
+    fi
+    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+else
+    # Determine user ID with proper precedence:
+    # 1. PUID (LinuxServer.io standard - recommended)
+    # 2. UID (legacy, for backward compatibility with existing installs)
+    # 3. Default to 1000
+    #
+    # Note: $UID is a bash builtin that's always set. We use `printenv` to detect
+    # if UID was explicitly set as an environment variable (e.g., via docker-compose).
+    if [ -n "$PUID" ]; then
+        RUN_UID="$PUID"
+        echo "Using PUID=$RUN_UID"
+    elif printenv UID >/dev/null 2>&1; then
+        RUN_UID="$(printenv UID)"
+        echo "Using UID=$RUN_UID (legacy - consider migrating to PUID)"
+    else
+        RUN_UID=1000
+        echo "Using default UID=$RUN_UID"
+    fi
+
+    # Determine group ID with proper precedence:
+    # 1. PGID (LinuxServer.io standard - recommended)
+    # 2. GID (legacy, for backward compatibility with existing installs)
+    # 3. Default to 1000
+    if [ -n "$PGID" ]; then
+        RUN_GID="$PGID"
+        echo "Using PGID=$RUN_GID"
+    elif [ -n "$GID" ]; then
+        RUN_GID="$GID"
+        echo "Using GID=$RUN_GID (legacy - consider migrating to PGID)"
+    else
+        RUN_GID=1000
+        echo "Using default GID=$RUN_GID"
+    fi
+
+    if ! getent group "$RUN_GID" >/dev/null; then
+        echo "Adding group $RUN_GID with name appuser"
+        groupadd -g "$RUN_GID" appuser
+    fi
+
+    # Create user if it doesn't exist for this UID yet.
+    if ! getent passwd "$RUN_UID" >/dev/null; then
+        echo "Adding user $RUN_UID with name appuser"
+        useradd -u "$RUN_UID" -g "$RUN_GID" -d "$DEFAULT_RUNTIME_HOME" -s /sbin/nologin appuser
+    fi
+
+    # Get username for the UID (whether we just created it or it existed)
+    USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
+    if [ -z "$USERNAME" ]; then
+        USERNAME="$RUN_UID"
+    fi
+    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+fi
+
+# Avoid unnecessary gosu hops when we're already running as the target user.
+# Some nested LXC setups spin on root-to-root gosu invocations.
+needs_user_switch() {
+    local current_uid
+    local current_gid
+
+    current_uid=$(id -u)
+    current_gid=$(id -g)
+
+    [ "$current_uid" != "$RUN_UID" ] || [ "$current_gid" != "$RUN_GID" ]
+}
+
+run_as_target_user() {
+    if needs_user_switch; then
+        gosu "$TARGET_USER_SPEC" "$@"
+        return $?
+    fi
+
+    "$@"
+}
+
+exec_as_target_user() {
+    if needs_user_switch; then
+        exec gosu "$TARGET_USER_SPEC" "$@"
+    fi
+
+    exec "$@"
+}
+
+test_write() {
+    local folder=$1
+    local test_file="$folder/shelfmark_TEST_WRITE"
+    local FILE_CONTENT
+    local result
+    local result_text
+
+    if ! mkdir -p "$folder"; then
+        echo "Failed to create directory for write test: $folder"
+        return 1
+    fi
+
+    if ! run_as_target_user sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
+        echo "Failed to write test file in $folder as $USERNAME"
+        return 1
+    fi
+
+    FILE_CONTENT=$(cat "$test_file" 2>/dev/null || echo "")
+    rm -f "$test_file"
+    [ "$FILE_CONTENT" = "0123456789_TEST" ]
+    result=$?
+    if [ $result -eq 0 ]; then
+        result_text="true"
+    else
+        result_text="false"
+    fi
+    echo "Test write to $folder by $USERNAME: $result_text"
+    return $result
+}
+
+make_writable() {
+    local folder="$1"
+    local mode="${2:-tree}"
+    local did_full_chown=0
+    local is_writable
+    set +e
+    test_write "$folder"
+    is_writable=$?
+    set -e
+    if [ $is_writable -eq 0 ]; then
+        echo "Folder $folder is writable, no need to change ownership"
+    else
+        if [ "$mode" = "root" ]; then
+            echo "Folder $folder is not writable, fixing top-level ownership and permissions"
+            mkdir -p "$folder"
+            chown "${RUN_UID}:${RUN_GID}" "$folder" || echo "Failed to change ownership for ${folder}, continuing..."
+            chmod u+rwx "$folder" || echo "Failed to change owner permissions for ${folder}, continuing..."
+        else
+            echo "Folder $folder is not writable, changing ownership"
+            change_ownership "$folder"
+            chmod -R g+r,g+w "$folder" || echo "Failed to change group permissions for ${folder}, continuing..."
+        fi
+        did_full_chown=1
+    fi
+    # Fix any misowned subdirectories/files (e.g., from previous runs as root)
+    if [ "$mode" = "tree" ] && [ "$did_full_chown" -eq 0 ] && [ -d "$folder" ]; then
+        echo "Checking for misowned files/directories in $folder"
+        # Stay on the same filesystem to avoid traversing mounted subpaths
+        # (for example read-only bind mounts under /app in dev setups).
+        find "$folder" -xdev -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+            -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
+    fi
+    test_write "$folder" || echo "Failed to test write to ${folder}, continuing..."
+}
+
+fix_misowned() {
+    local folder="$1"
+    mkdir -p "$folder"
+    echo "Checking for misowned files/directories in $folder"
+    # Stay on the same filesystem to avoid traversing mounted subpaths
+    # (for example read-only bind mounts under /app in dev setups).
+    find "$folder" -xdev \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+        -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
+}
+
+# Ensure proper ownership of application directories
+change_ownership() {
+  local folder="$1"
+  mkdir -p "$folder"
+  echo "Changing ownership of $folder to $USERNAME:$RUN_GID"
+  chown -R "${RUN_UID}:${RUN_GID}" "${folder}" || echo "Failed to change ownership for ${folder}, continuing..."
+}
+
+require_writable_dir() {
+    local folder="$1"
+    local label="${2:-Directory}"
+
+    if ! mkdir -p "$folder"; then
+        echo "Failed to create ${label} directory: $folder"
+        exit 1
+    fi
+
+    if ! test_write "$folder"; then
+        echo "${label} directory is not writable in non-root mode: $folder"
+        echo "Prepare ownership outside the container (for example with a pre-owned volume or Kubernetes fsGroup)."
+        exit 1
+    fi
+}
+
+resolve_runtime_home() {
+    local runtime_home
+
+    runtime_home=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
+    case "$runtime_home" in
+        ""|/|/app|/nonexistent)
+            runtime_home="$DEFAULT_RUNTIME_HOME"
+            ;;
+    esac
+
+    printf '%s\n' "$runtime_home"
+}
+
+ensure_tree_writable() {
+    local folder="$1"
+
+    make_writable "$folder"
+    if [ -d "$folder" ]; then
+        chmod -R u+rwX,g+rwX "$folder" || echo "Failed to relax permissions for ${folder}, continuing..."
+    fi
+}
+
+ensure_symlinked_dir() {
+    local link_path="$1"
+    local target_path="$2"
+
+    ensure_tree_writable "$target_path"
+
+    if [ -L "$link_path" ]; then
+        local current_target
+        current_target=$(readlink "$link_path" 2>/dev/null || echo "")
+        if [ "$current_target" = "$target_path" ]; then
+            echo "$link_path already points to $target_path"
+            return 0
+        fi
+        echo "Replacing symlink $link_path -> $current_target with $target_path"
+        rm -f "$link_path" || echo "Failed to replace symlink ${link_path}, continuing..."
+    elif [ -d "$link_path" ]; then
+        echo "Moving existing scratch files from $link_path to $target_path"
+        find "$link_path" -xdev -mindepth 1 -maxdepth 1 -exec mv -t "$target_path" {} + 2>/dev/null || true
+        ensure_tree_writable "$target_path"
+
+        if ! rmdir "$link_path" 2>/dev/null; then
+            echo "Could not replace $link_path with symlink, leaving existing directory in place"
+            ensure_tree_writable "$link_path"
+            return 0
+        fi
+    elif [ -e "$link_path" ]; then
+        echo "$link_path exists and is not a directory, leaving it in place"
+        return 0
+    fi
+
+    if [ ! -e "$link_path" ]; then
+        ln -s "$target_path" "$link_path" || echo "Failed to create symlink ${link_path}, continuing..."
+    fi
+}
+
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    require_writable_dir /tmp/shelfmark "Temporary"
+
+    if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+        require_writable_dir /tmp/shelfmark/seleniumbase/downloaded_files "SeleniumBase downloads"
+        require_writable_dir /tmp/shelfmark/seleniumbase/archived_files "SeleniumBase archive"
+    fi
+
+    require_writable_dir "${CONFIG_DIR:-/config}" "Config"
+else
+    fix_misowned /var/log/shelfmark
+    fix_misowned /tmp/shelfmark
+
+    # Keep SeleniumBase on its default /app-based paths, but redirect the scratch
+    # directories into /tmp so bypasser startup doesn't depend on image-layer writes.
+    if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+        ensure_symlinked_dir /app/downloaded_files /tmp/shelfmark/seleniumbase/downloaded_files
+        ensure_symlinked_dir /app/archived_files /tmp/shelfmark/seleniumbase/archived_files
+
+        # Keep SeleniumBase's bundled drivers directory writable as well for
+        # compatibility with legacy UC code paths that still probe bundled assets.
+        set +e
+        SELENIUMBASE_DRIVERS_DIR=$("$PYTHON_BIN" -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
+        set -e
+
+        if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
+            change_ownership "$SELENIUMBASE_DRIVERS_DIR"
+
+            # If the legacy driver already exists, ensure it's executable for the runtime user.
+            if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
+                chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
+            fi
+        fi
+    fi
+
+    # Config is Shelfmark-owned state, so it keeps the thorough repair path.
+    make_writable "${CONFIG_DIR:-/config}" tree
+
+    # Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
+    CONFIG_PATH=${CONFIG_DIR:-/config}
+    set +e
+    test_write "$CONFIG_PATH" >/dev/null 2>&1
+    config_ok=$?
+    set -e
+
+    if [ $config_ok -ne 0 ] && [ "$RUN_UID" != "0" ]; then
+        config_owner=$(stat -c '%u' "$CONFIG_PATH" 2>/dev/null || echo "unknown")
+        if [ "$config_owner" = "0" ]; then
+            echo ""
+            echo "========================================================"
+            echo "WARNING: Permission issue detected!"
+            echo ""
+            echo "Config directory is owned by root but PUID=$RUN_UID."
+            echo "This typically happens after upgrading from v0.4.0 where"
+            echo "PUID/PGID settings were not respected."
+            echo ""
+            echo "Falling back to running as root to prevent data loss."
+            echo ""
+            echo "To fix this permanently, run on your HOST machine:"
+            echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
+            echo ""
+            echo "Then restart the container."
+            echo "========================================================"
+            echo ""
+            RUN_UID=0
+            RUN_GID=0
+            USERNAME=root
+            TARGET_USER_SPEC="0:0"
+        fi
+    fi
+fi
+
+# Always run Gunicorn (even when DEBUG=true) to ensure Socket.IO WebSocket
+# upgrades work reliably on customer machines.
+# Map app LOG_LEVEL (often DEBUG/INFO/...) to gunicorn's --log-level (lowercase).
+gunicorn_loglevel=$([ "$DEBUG" = "true" ] && echo debug || echo "${LOG_LEVEL:-info}" | tr '[:upper:]' '[:lower:]')
+command="${GUNICORN_BIN} --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
+
+# If DEBUG and not using an external bypass
+if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
+    set +e
+    set -x
+    echo "vvvvvvvvvvvv DEBUG MODE vvvvvvvvvvvv"
+    echo "Starting Xvfb for debugging"
+    "$PYTHON_BIN" -c "from pyvirtualdisplay import Display; Display(visible=False, size=(1440,1880)).start()"
+    id
+    free -h
+    uname -a
+    ulimit -a
+    df -h /tmp
+    env | sort
+    mount
+    cat /proc/cpuinfo
+    echo "==========================================="
+    echo "Debugging Chrome itself"
+    chromium --version
+    mkdir -p /tmp/chrome_crash_dumps
+    timeout --preserve-status 5s chromium \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --enable-logging --v=1 --log-level=0 \
+            --log-file=/tmp/chrome_entrypoint_test.log \
+            --crash-dumps-dir=/tmp/chrome_crash_dumps \
+            < /dev/null
+    EXIT_CODE=$?
+    echo "Chrome exit code: $EXIT_CODE"
+    ls -lh /tmp/chrome_entrypoint_test.log
+    ls -lh /tmp/chrome_crash_dumps
+    if [[ "$EXIT_CODE" -ne 0 && "$EXIT_CODE" -le 127 ]]; then
+        echo "Chrome failed to start. Lets trace it"
+        apt-get update && apt-get install -y strace
+        timeout --preserve-status 10s strace -f -o "/tmp/chrome_strace.log" chromium \
+                --headless=new \
+                --no-sandbox \
+                --version \
+                < /dev/null
+        EXIT_CODE=$?
+        echo "Strace exit code: $EXIT_CODE"
+        echo "Strace log:"
+        cat /tmp/chrome_strace.log
+    fi
+
+    pkill -9 -f Xvfb
+    pkill -9 -f chromium
+    sleep 1
+    ps aux
+    set +x
+    set -e
+    echo "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+fi
+
+# Verify /tmp has at least 1MB of space and is writable/readable
+echo "Verifying /tmp has enough space"
+rm -f /tmp/test.shelfmark
+if dd if=/dev/zero of=/tmp/test.shelfmark bs=1M count=1 2>/dev/null && \
+   [ "$(wc -c < /tmp/test.shelfmark)" -eq 1048576 ]; then
+    rm -f /tmp/test.shelfmark
+    echo "Success: /tmp is writable and readable"
+else
+    echo "Failure: /tmp is not writable or has insufficient space"
+    exit 1
+fi
+
+RUNTIME_HOME=$(resolve_runtime_home)
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    require_writable_dir "$RUNTIME_HOME" "Home"
+else
+    mkdir -p "$RUNTIME_HOME"
+    make_writable "$RUNTIME_HOME" tree
+fi
+
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    echo "Startup mode: non-root"
+elif [ "$RUN_UID" = "0" ] && [ "$RUN_GID" = "0" ]; then
+    echo "Startup mode: root"
+else
+    echo "Startup mode: root bootstrap with privilege drop"
+fi
+echo "Runtime identity: $USERNAME (${RUN_UID}:${RUN_GID})"
+
+echo "Running command: '$command' as '$USERNAME' (debug=${DEBUG:-false})"
+
+# Set umask for file permissions (default: 0022 = files 644, dirs 755)
+UMASK_VALUE=${UMASK:-0022}
+echo "Setting umask to $UMASK_VALUE"
+umask $UMASK_VALUE
+
+stop_file_logging
+exec_as_target_user env HOME="$RUNTIME_HOME" $command

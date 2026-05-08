@@ -1,0 +1,183 @@
+ARG TARGETPLATFORM
+ARG TARGETARCH
+ARG BUILDPLATFORM
+ARG BUILDARCH
+
+# Frontend build stage.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
+
+# Helpful debug output to see what platforms BuildKit thinks it's using
+RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
+
+WORKDIR /frontend
+
+# Copy frontend package files
+COPY src/frontend/package*.json ./
+
+# Install dependencies (cache mount for faster rebuilds)
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# Copy frontend source
+COPY src/frontend/ ./
+
+# Build the frontend
+RUN npm run build
+
+# Use python-slim as the base image
+FROM python:3.14-slim AS base
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /uvx /bin/
+
+# Add build argument for version
+ARG BUILD_VERSION
+ENV BUILD_VERSION=${BUILD_VERSION}
+ARG RELEASE_VERSION
+ENV RELEASE_VERSION=${RELEASE_VERSION}
+
+# Set shell to bash with pipefail option
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Consistent environment variables grouped together
+ENV DEBIAN_FRONTEND=noninteractive \
+    DOCKERMODE=true \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=UTF-8 \
+    NAME=Shelfmark \
+    PATH=/app/.venv/bin:$PATH \
+    PYTHONPATH=/app \
+    # PUID/PGID will be handled by entrypoint script, but TZ/Locale are still needed
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+# Set ARG for build-time expansion (FLASK_PORT), ENV for runtime access
+ENV FLASK_PORT=8084
+
+# Configure locale, timezone, and perform initial cleanup in a single layer
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # For locale
+    locales tzdata \
+    # For healthcheck
+    curl \
+    # For entrypoint
+    dumb-init \
+    # For debug
+    zip iputils-ping \
+    # For user switching
+    gosu \
+    # --- Tor support (activated via USING_TOR=true) ---
+    tor \
+    supervisor \
+    iptables && \
+    # Configure iptables alternatives for tor.sh compatibility
+    update-alternatives --set iptables /usr/sbin/iptables-legacy && \
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
+    # Cleanup APT cache *after* all installs in this layer
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Default to UTC timezone but will be overridden by the entrypoint script
+    ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo UTC > /etc/timezone && \
+    # Configure locale
+    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen en_US.UTF-8 && \
+    echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+# Create a fixed runtime user/group so hardened Docker/Kubernetes deployments
+# can start the container directly as a non-root user with a passwd entry.
+RUN groupadd -g 1000 shelfmark && \
+    useradd -u 1000 -g shelfmark -d /home/shelfmark -s /usr/sbin/nologin shelfmark && \
+    mkdir -p /home/shelfmark && \
+    chown 1000:1000 /home/shelfmark
+
+# Set working directory
+WORKDIR /app
+
+# Install core Python dependencies first for better layer caching
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups
+
+# Copy application code *after* dependencies are installed
+COPY . .
+
+# Copy built frontend from frontend-builder stage
+COPY --from=frontend-builder /frontend/dist /app/frontend-dist
+
+# Final setup: create image-owned runtime paths for the fixed non-root user.
+# Root/PUID mode still re-homes ownership at startup when needed.
+RUN mkdir -p \
+        /config \
+        /books \
+        /var/log/shelfmark \
+        /tmp/shelfmark/seleniumbase/downloaded_files \
+        /tmp/shelfmark/seleniumbase/archived_files && \
+    rm -rf /app/downloaded_files /app/archived_files && \
+    ln -s /tmp/shelfmark/seleniumbase/downloaded_files /app/downloaded_files && \
+    ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
+    chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
+    chmod -R a+rX /app && \
+    chmod +x /app/entrypoint.sh /app/tor.sh /app/genDebug.sh
+
+# Expose the application port
+EXPOSE ${FLASK_PORT}
+
+# Add healthcheck for container status
+# Uses /api/health which doesn't require authentication
+HEALTHCHECK --interval=60s --timeout=60s --start-period=60s --retries=3 \
+    CMD curl -s http://localhost:${FLASK_PORT}/api/health > /dev/null || exit 1
+
+# Use dumb-init as the entrypoint to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+
+FROM base AS shelfmark
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # For dumb display
+    xvfb \
+    # For screen recording
+    ffmpeg \
+    # --- Chromium (unpinned - uses latest from Debian repos) ---
+    # Chrome 144+ requires --enable-unsafe-swiftshader for WebGL in Docker.
+    # This flag is set in internal_bypasser.py _get_browser_args()
+    chromium \
+    chromium-common \
+    # For tkinter (pyautogui)
+    python3-tk \
+    # For RAR extraction
+    unrar-free && \
+    # Create symlink so rarfile library can find unrar
+    ln -sf /usr/bin/unrar-free /usr/bin/unrar && \
+    # Cleanup APT cache
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install the browser automation stack used by the full image
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --extra browser
+
+# Keep SeleniumBase's bundled driver cache writable for the fixed non-root user.
+RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')") && \
+    chown -R 1000:1000 "${SELENIUMBASE_DRIVERS_DIR}" && \
+    chmod -R u+rwX,go+rX "${SELENIUMBASE_DRIVERS_DIR}" && \
+    if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver"; fi
+
+# Grant read/execute permissions to others
+RUN chmod -R o+rx /usr/bin/chromium
+
+# Default command to run the application entrypoint script
+CMD ["/app/entrypoint.sh"]
+
+FROM base AS shelfmark-lite
+
+ENV USING_EXTERNAL_BYPASSER=true
+
+CMD ["/app/entrypoint.sh"]

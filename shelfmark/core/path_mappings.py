@@ -1,0 +1,150 @@
+"""Remote path mapping utilities.
+
+Used when an external download client reports a completed download path that does
+not exist inside the Shelfmark runtime environment (commonly different Docker
+volume mounts).
+
+A mapping rewrites a remote path prefix into a local path prefix.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+_WINDOWS_DRIVE_PREFIX_LENGTH = 2
+
+
+@dataclass(frozen=True)
+class RemotePathMapping:
+    """Mapping from a remote path prefix to a local path prefix."""
+
+    host: str
+    remote_path: str
+    local_path: str
+
+
+def _normalize_prefix(path: str) -> str:
+    normalized = str(path or "").strip()
+    if not normalized:
+        return ""
+
+    normalized = normalized.replace("\\", "/")
+
+    if normalized != "/":
+        normalized = normalized.rstrip("/")
+
+    return normalized
+
+
+def _is_windows_path(path: str) -> bool:
+    """Check if a path looks like a Windows path (has a drive letter like C:/)."""
+    return len(path) >= _WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":" and path[0].isalpha()
+
+
+def _normalize_host(host: str) -> str:
+    return str(host or "").strip().lower()
+
+
+def parse_remote_path_mappings(value: object) -> list[RemotePathMapping]:
+    """Parse configured remote-path mapping rows into normalized mappings."""
+    if not value or not isinstance(value, list):
+        return []
+
+    mappings: list[RemotePathMapping] = []
+
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+
+        host = _normalize_host(row.get("host", ""))
+        remote_path = _normalize_prefix(row.get("remotePath", ""))
+        local_path = _normalize_prefix(row.get("localPath", ""))
+
+        if not host or not remote_path or not local_path:
+            continue
+
+        mappings.append(
+            RemotePathMapping(host=host, remote_path=remote_path, local_path=local_path)
+        )
+
+    mappings.sort(key=lambda m: len(m.remote_path), reverse=True)
+    return mappings
+
+
+def remap_remote_to_local_with_match(
+    *,
+    mappings: Iterable[RemotePathMapping],
+    host: str,
+    remote_path: str | Path,
+) -> tuple[Path, bool]:
+    """Remap a remote path and report whether a configured mapping matched."""
+    host_normalized = _normalize_host(host)
+    remote_normalized = _normalize_prefix(str(remote_path))
+
+    if not remote_normalized:
+        return Path(str(remote_path)), False
+
+    # Windows paths are case-insensitive, so we need case-insensitive matching
+    # for paths that look like Windows paths (e.g., D:/Torrents)
+    is_windows = _is_windows_path(remote_normalized)
+
+    for mapping in mappings:
+        if _normalize_host(mapping.host) != host_normalized:
+            continue
+
+        remote_prefix = _normalize_prefix(mapping.remote_path)
+        if not remote_prefix:
+            continue
+
+        # For Windows paths, do case-insensitive prefix matching
+        if is_windows:
+            remote_lower = remote_normalized.lower()
+            prefix_lower = remote_prefix.lower()
+            matches = remote_lower == prefix_lower or remote_lower.startswith(prefix_lower + "/")
+        else:
+            matches = remote_normalized == remote_prefix or remote_normalized.startswith(
+                remote_prefix + "/"
+            )
+
+        if matches:
+            # Use the length of the original prefix to extract remainder
+            # This preserves the original case in folder names
+            remainder = remote_normalized[len(remote_prefix) :]
+            local_prefix = _normalize_prefix(mapping.local_path)
+
+            remainder = remainder.removeprefix("/")
+
+            remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
+            return remapped, True
+
+    return Path(remote_normalized), False
+
+
+def remap_remote_to_local(
+    *, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path
+) -> Path:
+    """Remap a remote path to a local path using the configured mappings."""
+    remapped, _ = remap_remote_to_local_with_match(
+        mappings=mappings,
+        host=host,
+        remote_path=remote_path,
+    )
+    return remapped
+
+
+def get_client_host_identifier(client: object) -> str | None:
+    """Return a stable identifier used by the mapping UI.
+
+    Sonarr uses the download client's configured host. Shelfmark currently uses
+    the download client 'name' (e.g. qbittorrent, sabnzbd).
+    """
+    name = getattr(client, "name", None)
+    if isinstance(name, str) and name.strip():
+        return name.strip().lower()
+
+    return None

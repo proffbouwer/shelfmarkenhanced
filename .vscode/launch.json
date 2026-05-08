@@ -1,0 +1,64 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger: Current Shelfmark File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "INGEST_DIR": "/tmp/shelfmark",
+        "TEMP_DIR": "/tmp/shelfmark",
+        "LOG_LEVEL": "DEBUG",
+        "LOG_ROOT": "/tmp/shelfmark",
+        "ENABLE_LOGGING": "true",
+        "DOCKERMODE": "false",
+        "DEBUG": "true",
+        "CUSTOM_DNS": "google",
+      },
+    },
+    {
+      "name": "Docker-compose Dev",
+      "type": "debugpy", // or "debugpy", Node, etc.
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "preLaunchTask": "docker-compose up (dev)", // Spin up dev containers
+      "postDebugTask": "docker-compose down (dev)", // Optional: tear them down
+      "env": {
+        "INGEST_DIR": "/tmp/shelfmark"
+      },
+    },
+    {
+      "name": "Docker-compose Prod",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "preLaunchTask": "docker-compose up (prod)",
+      "postDebugTask": "docker-compose down (prod)",
+      "env": {
+        "INGEST_DIR": "/tmp/shelfmark"
+      },
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Launch Browser",
+      "url": "http://localhost:8000",
+      "webRoot": "${workspaceFolder}",
+      "presentation": {
+        "hidden": true
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Launch Shelfmark",
+      "configurations": [
+        "Launch Shelfmark app.py",
+        "Launch Browser"
+      ]
+    }
+  ]
+}

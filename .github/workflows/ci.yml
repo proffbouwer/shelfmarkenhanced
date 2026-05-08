@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality:
+    name: Python Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: make install-python-dev
+
+      - name: Lint
+        run: make python-lint
+
+      - name: Check formatting
+        run: make python-format
+
+      - name: Check dead code
+        run: make python-dead-code
+
+  python-typechecks:
+    name: Python Typechecks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: make install-python-dev
+
+      - name: Typecheck
+        run: make python-typecheck
+
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: make install-python-dev
+
+      - name: Run tests
+        run: make python-test
+
+  docker-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build shelfmark-lite image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          target: shelfmark-lite
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            BUILD_VERSION=pr-${{ github.sha }}
+            RELEASE_VERSION=pr-${{ github.event.pull_request.number }}
+
+  frontend-quality:
+    name: Frontend Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make install-ci
+
+      - name: Lint
+        run: make frontend-lint
+
+      - name: Check formatting
+        run: make frontend-format
+
+  frontend-typechecks:
+    name: Frontend Typechecks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make install-ci
+
+      - name: Typecheck
+        run: make frontend-typecheck
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make install-ci
+
+      - name: Unit tests
+        run: make frontend-test

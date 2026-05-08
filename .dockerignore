@@ -1,0 +1,50 @@
+.git
+.github
+.vscode
+.local
+.mypy_cache
+README_images
+.gitignore
+Dockerfile
+.dockerignore
+.DS_Store
+docker-compose.yml
+docker-compose.*.yml
+readme.md
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment files
+.env*
+
+# Test & Coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Frontend build artifacts (built in separate stage)
+src/frontend/node_modules/
+src/frontend/dist/
+src/frontend/.vite/
+
+# Old frontend code (replaced by src/frontend)
+templates/
+static/css/
+static/js/
