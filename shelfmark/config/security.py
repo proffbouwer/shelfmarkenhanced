@@ -85,6 +85,7 @@ def security_settings() -> list[SettingsField]:
         {"label": "Local", "value": "builtin"},
         {"label": "Proxy Authentication", "value": "proxy"},
         {"label": "OIDC (OpenID Connect)", "value": "oidc"},
+        {"label": "SAML2 SSO", "value": "saml"},
         {"label": "Calibre-Web Database", "value": "cwa"},
     ]
 
@@ -272,6 +273,44 @@ def security_settings() -> list[SettingsField]:
                 "default": "",
             },
         ),
+        (
+            TextField,
+            {
+                "key": "OIDC_EMAIL_CLAIM",
+                "label": "Email Claim",
+                "description": "ID token claim that contains the user's email address. Leave blank to use the standard 'email' claim.",
+                "placeholder": "email",
+                "default": "",
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "OIDC_USERNAME_CLAIM",
+                "label": "Username Claim",
+                "description": "ID token claim to use as the username. Leave blank to use the standard 'preferred_username' or 'sub' claim.",
+                "placeholder": "preferred_username",
+                "default": "",
+            },
+        ),
+        (
+            CheckboxField,
+            {
+                "key": "HIDE_LOCAL_AUTH",
+                "label": "Hide Local Login Form",
+                "description": "When OIDC is active, hide the username/password login form so users can only sign in via OIDC.",
+                "default": False,
+            },
+        ),
+        (
+            CheckboxField,
+            {
+                "key": "OIDC_AUTO_REDIRECT",
+                "label": "Auto-Redirect to OIDC",
+                "description": "Automatically redirect unauthenticated users to the OIDC provider instead of showing the login page.",
+                "default": False,
+            },
+        ),
     ]
     fields.extend(_auth_field(factory, "oidc", **spec) for factory, spec in oidc_specs)
     fields.append(
@@ -294,6 +333,88 @@ def security_settings() -> list[SettingsField]:
             show_when=_auth_condition("oidc"),
         )
     )
+
+    # ── SAML2 settings ─────────────────────────────────────────────────────
+    saml_specs: list[tuple[type, dict[str, Any]]] = [
+        (
+            TextField,
+            {
+                "key": "SAML_ENTITY_ID",
+                "label": "SP Entity ID",
+                "description": "Service Provider entity ID (usually your application URL).",
+                "placeholder": "https://shelfmark.example.com",
+                "required": True,
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_IDP_METADATA_URL",
+                "label": "IdP Metadata URL",
+                "description": "URL to fetch IdP metadata XML. Takes precedence over manual SSO URL / certificate fields.",
+                "placeholder": "https://idp.example.com/metadata.xml",
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_IDP_SSO_URL",
+                "label": "IdP SSO URL",
+                "description": "IdP Single Sign-On URL (used when no metadata URL is provided).",
+                "placeholder": "https://idp.example.com/sso",
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_IDP_X509_CERT",
+                "label": "IdP X.509 Certificate",
+                "description": "IdP signing certificate (PEM, without header/footer). Required when not using a metadata URL.",
+                "placeholder": "MIIC...",
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_ATTR_EMAIL",
+                "label": "Email Attribute",
+                "description": "SAML attribute name containing the user's email.",
+                "placeholder": "email",
+                "default": "email",
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_ATTR_USERNAME",
+                "label": "Username Attribute",
+                "description": "SAML attribute name to use as the username. Falls back to NameID if blank.",
+                "placeholder": "uid",
+                "default": "",
+            },
+        ),
+        (
+            CheckboxField,
+            {
+                "key": "SAML_AUTO_PROVISION",
+                "label": "Auto-Provision Users",
+                "description": "Automatically create a user account on first SAML login.",
+                "default": True,
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "SAML_BUTTON_LABEL",
+                "label": "Login Button Label",
+                "description": "Custom label for the SAML sign-in button on the login page.",
+                "placeholder": "Sign in with SSO",
+                "default": "",
+            },
+        ),
+    ]
+    fields.extend(_auth_field(factory, "saml", **spec) for factory, spec in saml_specs)
+
     return fields
 
 

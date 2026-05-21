@@ -8,7 +8,14 @@
 - api_errors.py: @handle_api_errors decorator
 - Docker CI: .github/workflows/build-and-publish-enhanced.yml + compose/docker-compose.enhanced.yml
 
-**Next:** Phase 2 (Settings screen route), Phase 3 (deps + Magic UI), Phase 4 (download privacy + library)
+**Session 2 (2026-05-21):** Phase 2 + Phase 3 + Phase 4 + Phase 6 complete.
+- SettingsPage wired as dedicated route `/settings/:tab`
+- Magic UI components (AnimatedBackground, ShimmerButton, BlurFade, BorderBeam, NumberTicker, TextReveal)
+- Download privacy: public/private visibility, `.private/<user_id>/` storage
+- Library screen: full CRUD + visibility filters + send-to-ACW/folder
+- Phase 6: SAML2 SSO, OIDC promotion, session invalidation, UsersPage
+
+**Next:** Phase 5 (Gluetun VPN) or Phase 7 (CI/CD Dockerfile.enhanced)
 
 ---
 
@@ -140,33 +147,33 @@
 
 ### Database
 
-- [ ] **P6-1** Migration: add `saml_subject`, `last_login_at`, `session_invalidated_at` columns to `users`
-- [ ] **P6-2** Add unique index on `saml_subject`
+- [x] **P6-1** Migration: add `saml_subject`, `last_login_at`, `session_invalidated_at` columns to `users`
+- [x] **P6-2** Add unique index on `saml_subject`
 
 ### OIDC Completion
 
-- [ ] **P6-3** Promote `HIDE_LOCAL_AUTH` + `OIDC_AUTO_REDIRECT` from env-only to settings fields
-- [ ] **P6-4** Add `OIDC_EMAIL_CLAIM` + `OIDC_USERNAME_CLAIM` settings fields
-- [ ] **P6-5** Add "Force re-login" admin action per user
+- [x] **P6-3** Promote `HIDE_LOCAL_AUTH` + `OIDC_AUTO_REDIRECT` from env-only to settings fields
+- [x] **P6-4** Add `OIDC_EMAIL_CLAIM` + `OIDC_USERNAME_CLAIM` settings fields
+- [x] **P6-5** Add "Force re-login" admin action per user — `POST /api/admin/users/<id>/force-logout`
 
 ### SAML2
 
-- [ ] **P6-6** Add `python3-saml` (or `pysaml2`) dependency
-- [ ] **P6-7** Add `libxmlsec1-dev` to Dockerfile (if using `python3-saml`)
-- [ ] **P6-8** Create `shelfmark/core/saml_auth.py` — metadata parsing, assertion validation, user provisioning
-- [ ] **P6-9** Create `shelfmark/core/saml_routes.py` — `/api/auth/saml/login`, `/api/auth/saml/callback`, `/api/auth/saml/metadata`
-- [ ] **P6-10** Add SAML settings fields to `shelfmark/config/security.py`
-- [ ] **P6-11** Wire `register_saml_routes()` in app factory
+- [x] **P6-6** Add `python3-saml` dependency
+- [x] **P6-7** Add `libxmlsec1-dev xmlsec1 libssl-dev pkg-config` to Dockerfile
+- [x] **P6-8** Create `shelfmark/core/saml_auth.py` — metadata parsing, assertion validation, user provisioning
+- [x] **P6-9** Create `shelfmark/core/saml_routes.py` — `/api/auth/saml/login`, `/api/auth/saml/callback`, `/api/auth/saml/metadata`
+- [x] **P6-10** Add SAML settings fields to `shelfmark/config/security.py`
+- [x] **P6-11** Wire `register_saml_routes()` in app factory
 
 ### User Management Enhancements
 
-- [ ] **P6-12** Add `GET /api/admin/users/<id>/stats` endpoint
-- [ ] **P6-13** Add `GET/DELETE /api/admin/users/<id>/sessions` endpoints
-- [ ] **P6-14** Add `session_invalidated_at` check in `login_required`
-- [ ] **P6-15** Create `src/frontend/src/pages/UsersPage.tsx`
-- [ ] **P6-16** Add bulk actions to `UserListView.tsx` (role change, bulk delete)
-- [ ] **P6-17** Add user activity cards (last login, stats)
-- [ ] **P6-18** Add `/users` route to `App.tsx`
+- [x] **P6-12** Add `GET /api/admin/users/<id>/stats` endpoint
+- [x] **P6-13** Add `DELETE /api/admin/users/<id>/sessions` endpoint (alias for force-logout)
+- [x] **P6-14** Add `session_invalidated_at` check in `login_required`
+- [x] **P6-15** Create `src/frontend/src/pages/UsersPage.tsx`
+- [x] **P6-16** Add "Force Re-Login" per-user action to `UserListView.tsx`
+- [x] **P6-17** Add `last_login_at` / download stats to user model + API
+- [x] **P6-18** Add `/users` route to `App.tsx` + "Users" link in `Header.tsx` (admin-only)
 
 ---
 

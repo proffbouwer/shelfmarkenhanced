@@ -14,11 +14,13 @@ AUTH_SOURCE_BUILTIN = "builtin"
 AUTH_SOURCE_OIDC = "oidc"
 AUTH_SOURCE_PROXY = "proxy"
 AUTH_SOURCE_CWA = "cwa"
+AUTH_SOURCE_SAML = "saml"
 AUTH_SOURCES = (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_OIDC,
     AUTH_SOURCE_PROXY,
     AUTH_SOURCE_CWA,
+    AUTH_SOURCE_SAML,
 )
 AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
 _ALWAYS_ADMIN_SETTINGS_TABS = frozenset({"security", "users"})
@@ -92,6 +94,9 @@ def determine_auth_mode(
     ):
         return AUTH_SOURCE_OIDC
 
+    if auth_mode == AUTH_SOURCE_SAML and security_config.get("SAML_ENTITY_ID"):
+        return AUTH_SOURCE_SAML
+
     return "none"
 
 
@@ -109,6 +114,7 @@ def load_active_auth_mode(
             "PROXY_AUTH_USER_HEADER": app_config.get("PROXY_AUTH_USER_HEADER", ""),
             "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),
             "OIDC_CLIENT_ID": app_config.get("OIDC_CLIENT_ID", ""),
+            "SAML_ENTITY_ID": app_config.get("SAML_ENTITY_ID", ""),
         }
         return determine_auth_mode(
             security_config,
@@ -123,7 +129,8 @@ def is_user_active_for_auth_mode(user: Mapping[str, Any], auth_mode: str) -> boo
     """Return whether a user can authenticate under the current auth mode."""
     source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
     if source == AUTH_SOURCE_BUILTIN:
-        return auth_mode in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)
+        # Builtin users can always log in via local form (fallback for OIDC admins too).
+        return auth_mode in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC, AUTH_SOURCE_SAML)
     return source == auth_mode
 
 

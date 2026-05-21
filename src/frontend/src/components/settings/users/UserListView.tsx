@@ -43,6 +43,8 @@ interface UserListViewProps {
   deletingUserId: number | null;
   onSyncCwa: () => Promise<void> | void;
   syncingCwa: boolean;
+  onForceLogout?: (userId: number) => Promise<boolean>;
+  forcingLogoutUserId?: number | null;
 }
 
 export const UserListView = ({
@@ -78,6 +80,8 @@ export const UserListView = ({
   deletingUserId,
   onSyncCwa,
   syncingCwa,
+  onForceLogout,
+  forcingLogoutUserId = null,
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
@@ -205,29 +209,50 @@ export const UserListView = ({
                   {isEditingRow && (
                     <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
                       {hasLoadedEditUser && editingUser ? (
-                        <UserAccountCardContent
-                          user={editingUser}
-                          onUserChange={onEditingUserChange}
-                          onSave={onEditSave}
-                          saving={saving}
-                          onCancel={onCancelEdit}
-                          editPassword={editPassword}
-                          onEditPasswordChange={onEditPasswordChange}
-                          editPasswordConfirm={editPasswordConfirm}
-                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                          onDelete={() => setConfirmDelete(user.id)}
-                          onConfirmDelete={() => {
-                            void handleDelete(user.id);
-                          }}
-                          onCancelDelete={() => setConfirmDelete(null)}
-                          isDeletePending={confirmDelete === user.id}
-                          deleting={deletingUserId === user.id}
-                          preferencesPanel={{
-                            description: 'Customise delivery and request settings for this user.',
-                            actionLabel: 'Open User Preferences',
-                            onAction: onOpenOverrides,
-                          }}
-                        />
+                        <>
+                          <UserAccountCardContent
+                            user={editingUser}
+                            onUserChange={onEditingUserChange}
+                            onSave={onEditSave}
+                            saving={saving}
+                            onCancel={onCancelEdit}
+                            editPassword={editPassword}
+                            onEditPasswordChange={onEditPasswordChange}
+                            editPasswordConfirm={editPasswordConfirm}
+                            onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                            onDelete={() => setConfirmDelete(user.id)}
+                            onConfirmDelete={() => {
+                              void handleDelete(user.id);
+                            }}
+                            onCancelDelete={() => setConfirmDelete(null)}
+                            isDeletePending={confirmDelete === user.id}
+                            deleting={deletingUserId === user.id}
+                            preferencesPanel={{
+                              description: 'Customise delivery and request settings for this user.',
+                              actionLabel: 'Open User Preferences',
+                              onAction: onOpenOverrides,
+                            }}
+                          />
+                          {onForceLogout && (
+                            <div className="border-t border-(--border-muted) pt-4">
+                              <p className="mb-2 text-xs opacity-60">
+                                Force the user to log in again by invalidating their active sessions.
+                              </p>
+                              <button
+                                type="button"
+                                disabled={forcingLogoutUserId === user.id}
+                                onClick={() => {
+                                  void onForceLogout(user.id);
+                                }}
+                                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-400"
+                              >
+                                {forcingLogoutUserId === user.id
+                                  ? 'Invalidating...'
+                                  : 'Force Re-Login'}
+                              </button>
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className="text-sm opacity-60">Loading user details...</div>
                       )}

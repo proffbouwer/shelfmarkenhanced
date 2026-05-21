@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, jsonify, request, session
@@ -289,8 +290,10 @@ def register_auth_routes(app: Flask, user_db: UserDB | None, user_db_path: str) 
                         session["user_id"] = username
                         session["db_user_id"] = db_user["id"]
                         session["is_admin"] = is_admin
+                        session["login_at"] = datetime.now(UTC).isoformat()
                         session.permanent = remember_me
                         clear_failed_logins(user_db_path, username)
+                        user_db.record_login(db_user["id"])
                         logger.info(
                             "Login successful for user '%s' from IP %s (%s auth, is_admin=%s, remember_me=%s)",
                             username,
@@ -351,8 +354,11 @@ def register_auth_routes(app: Flask, user_db: UserDB | None, user_db_path: str) 
                     session["is_admin"] = is_admin
                     if db_user_id is not None:
                         session["db_user_id"] = db_user_id
+                    session["login_at"] = datetime.now(UTC).isoformat()
                     session.permanent = remember_me
                     clear_failed_logins(user_db_path, username)
+                    if user_db is not None and db_user_id is not None:
+                        user_db.record_login(db_user_id)
                     logger.info(
                         "Login successful for user '%s' from IP %s (CWA auth, is_admin=%s, remember_me=%s)",
                         username,

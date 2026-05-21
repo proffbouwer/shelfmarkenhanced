@@ -4,6 +4,7 @@ import type { AdminUser, DeliveryPreferencesResponse } from '../../../services/a
 import {
   createAdminUser,
   deleteAdminUser,
+  forceLogoutUser,
   syncAdminCwaUsers,
   updateAdminUser,
 } from '../../../services/api';
@@ -71,6 +72,7 @@ export const useUserMutations = ({
   const [saving, setSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [syncingCwa, setSyncingCwa] = useState(false);
+  const [forcingLogoutUserId, setForcingLogoutUserId] = useState<number | null>(null);
   const fail = (message: string) => (onShowToast?.(message, 'error'), false);
 
   const createUser = async () => {
@@ -215,14 +217,30 @@ export const useUserMutations = ({
     }
   };
 
+  const forceLogout = async (userId: number): Promise<boolean> => {
+    setForcingLogoutUserId(userId);
+    try {
+      await forceLogoutUser(userId);
+      onShowToast?.('User sessions invalidated — they will need to log in again.', 'success');
+      return true;
+    } catch {
+      onShowToast?.('Failed to invalidate user sessions.', 'error');
+      return false;
+    } finally {
+      setForcingLogoutUserId(null);
+    }
+  };
+
   return {
     creating,
     saving,
     deletingUserId,
     syncingCwa,
+    forcingLogoutUserId,
     createUser,
     saveEditedUser,
     deleteUser,
     syncCwaUsers,
+    forceLogout,
   };
 };

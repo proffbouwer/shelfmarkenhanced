@@ -62,10 +62,12 @@ export const UsersManagementField = ({
     saving,
     deletingUserId,
     syncingCwa,
+    forcingLogoutUserId,
     createUser,
     saveEditedUser,
     deleteUser,
     syncCwaUsers,
+    forceLogout,
   } = useUserMutations({
     onShowToast,
     fetchUsers,
@@ -327,6 +329,8 @@ export const UsersManagementField = ({
       deletingUserId={deletingUserId}
       onSyncCwa={handleSyncCwa}
       syncingCwa={syncingCwa}
+      onForceLogout={forceLogout}
+      forcingLogoutUserId={forcingLogoutUserId}
     />
   );
 };

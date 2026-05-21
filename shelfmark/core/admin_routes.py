@@ -28,6 +28,7 @@ from shelfmark.core.auth_modes import (
     AUTH_SOURCE_CWA,
     AUTH_SOURCE_OIDC,
     AUTH_SOURCE_PROXY,
+    AUTH_SOURCE_SAML,
     is_user_active_for_auth_mode,
     load_active_auth_mode,
     normalize_auth_source,
@@ -82,7 +83,7 @@ def _get_user_edit_capabilities(
         "canSetPassword": auth_source == AUTH_SOURCE_BUILTIN,
         "canEditRole": can_edit_role,
         "canEditEmail": auth_source in {AUTH_SOURCE_BUILTIN, AUTH_SOURCE_PROXY},
-        "canEditDisplayName": auth_source != AUTH_SOURCE_OIDC,
+        "canEditDisplayName": auth_source not in {AUTH_SOURCE_OIDC, AUTH_SOURCE_SAML},
     }
 
 
@@ -440,6 +441,46 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         )
 
     register_admin_settings_routes(app, user_db, _require_admin)
+
+    @app.route("/api/admin/users/<int:user_id>/force-logout", methods=["POST"])
+    @_require_admin
+    def admin_force_logout(user_id: int) -> Response | tuple[Response, int]:
+        """Invalidate all active sessions for a user."""
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user_db.invalidate_sessions(user_id)
+        logger.info(
+            "Admin %s force-logged-out user %s (%s)",
+            session.get("user_id", "unknown"),
+            user_id,
+            user["username"],
+        )
+        return jsonify({"success": True})
+
+    @app.route("/api/admin/users/<int:user_id>/stats", methods=["GET"])
+    @_require_admin
+    def admin_user_stats(user_id: int) -> Response | tuple[Response, int]:
+        """Return download stats for a user."""
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        stats = user_db.get_user_stats(user_id)
+        return jsonify(stats)
+
+    @app.route("/api/admin/users/<int:user_id>/sessions", methods=["DELETE"])
+    @_require_admin
+    def admin_delete_user_sessions(user_id: int) -> Response | tuple[Response, int]:
+        """Invalidate all active sessions for a user (alias for force-logout)."""
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user_db.invalidate_sessions(user_id)
+        logger.info("Admin invalidated sessions for user %s", user_id)
+        return jsonify({"success": True})
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin

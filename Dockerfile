@@ -65,6 +65,8 @@ RUN apt-get update && \
     curl \
     # For entrypoint
     dumb-init \
+    # For python3-saml (SAML2 SSO)
+    libxmlsec1-dev xmlsec1 libssl-dev pkg-config \
     # For debug
     zip iputils-ping \
     # For user switching

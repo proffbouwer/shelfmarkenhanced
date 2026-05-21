@@ -18,6 +18,7 @@ import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { LibraryPage } from './pages/LibraryPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UsersPage } from './pages/UsersPage';
 import { ToastContainer } from './components/ToastContainer';
 import { UrlSearchBootstrapMount } from './components/UrlSearchBootstrapMount';
 import { SearchModeProvider } from './contexts/SearchModeContext';
@@ -2868,6 +2869,16 @@ function App() {
           }
         />
         <Route path="/library" element={<LibraryPage onShowToast={showToast} />} />
+        <Route
+          path="/users"
+          element={
+            <UsersPage
+              authMode={authMode}
+              onShowToast={showToast}
+              onRefreshAuth={refreshAuth}
+            />
+          }
+        />
         <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
         <Route
           path="/settings/:tab"

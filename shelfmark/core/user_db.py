@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -211,6 +212,7 @@ class UserDB:
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_visibility(conn)
+                self._migrate_users_sso_columns(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -277,6 +279,20 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "retry_payload" not in column_names:
             conn.execute("ALTER TABLE download_history ADD COLUMN retry_payload TEXT")
+
+    def _migrate_users_sso_columns(self, conn: sqlite3.Connection) -> None:
+        """Ensure users table has SAML2 + session-management columns."""
+        columns = conn.execute("PRAGMA table_info(users)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "saml_subject" not in column_names:
+            conn.execute("ALTER TABLE users ADD COLUMN saml_subject TEXT")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_saml_subject ON users (saml_subject) WHERE saml_subject IS NOT NULL"
+            )
+        if "last_login_at" not in column_names:
+            conn.execute("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP")
+        if "session_invalidated_at" not in column_names:
+            conn.execute("ALTER TABLE users ADD COLUMN session_invalidated_at TIMESTAMP")
 
     def _migrate_download_history_visibility(self, conn: sqlite3.Connection) -> None:
         """Ensure download_history has visibility + private_storage_path columns and index."""
@@ -437,6 +453,109 @@ class UserDB:
                 conn.commit()
             finally:
                 conn.close()
+
+    def record_login(self, user_id: int) -> None:
+        """Update last_login_at for the given user to now (UTC)."""
+        now = datetime.now(UTC).isoformat()
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "UPDATE users SET last_login_at = ? WHERE id = ?",
+                    (now, user_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def invalidate_sessions(self, user_id: int) -> None:
+        """Set session_invalidated_at = now so all existing sessions are rejected."""
+        now = datetime.now(UTC).isoformat()
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "UPDATE users SET session_invalidated_at = ? WHERE id = ?",
+                    (now, user_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_user_by_saml_subject(self, saml_subject: str) -> dict[str, Any] | None:
+        """Return the user row matching the SAML NameID, or None."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE saml_subject = ?", (saml_subject,)
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def upsert_saml_user(
+        self,
+        saml_subject: str,
+        username: str,
+        email: str | None = None,
+        display_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a SAML-authenticated user. Returns the user row."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                existing = conn.execute(
+                    "SELECT * FROM users WHERE saml_subject = ?", (saml_subject,)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE users SET last_login_at = ? WHERE saml_subject = ?",
+                        (datetime.now(UTC).isoformat(), saml_subject),
+                    )
+                    conn.commit()
+                    return dict(existing)
+                conn.execute(
+                    """
+                    INSERT INTO users (username, email, display_name, saml_subject, auth_source, role, last_login_at)
+                    VALUES (?, ?, ?, ?, 'saml', 'user', ?)
+                    """,
+                    (username, email, display_name, saml_subject, datetime.now(UTC).isoformat()),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM users WHERE saml_subject = ?", (saml_subject,)
+                ).fetchone()
+                return dict(row) if row else {}
+            finally:
+                conn.close()
+
+    def get_user_stats(self, user_id: int) -> dict[str, Any]:
+        """Return download statistics for a user."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_downloads,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                    MAX(started_at) AS last_download_at
+                FROM download_history
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+            user = conn.execute(
+                "SELECT last_login_at, session_invalidated_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            result: dict[str, Any] = dict(row) if row else {}
+            if user:
+                result["last_login_at"] = user["last_login_at"]
+                result["session_invalidated_at"] = user["session_invalidated_at"]
+            return result
+        finally:
+            conn.close()
 
     def list_users(self) -> list[dict[str, Any]]:
         """List all users."""

@@ -7,6 +7,7 @@ Business logic remains in oidc_auth.py.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -313,6 +314,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
+            session["login_at"] = datetime.now(UTC).isoformat()
             session.permanent = True
 
             logger.info("OIDC login successful: %s (admin=%s)", user["username"], is_admin)

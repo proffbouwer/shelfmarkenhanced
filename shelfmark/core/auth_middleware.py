@@ -89,6 +89,20 @@ def login_required(
         if "user_id" not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
+        # Check if admin has invalidated the user's sessions since they logged in.
+        if _user_db is not None:
+            from shelfmark.core.request_helpers import get_session_db_user_id
+            db_uid = get_session_db_user_id(session)
+            if db_uid is not None:
+                login_time = session.get("login_at")
+                if login_time is not None:
+                    user_row = _user_db.get_user(user_id=db_uid)
+                    if user_row:
+                        invalidated_at = user_row.get("session_invalidated_at")
+                        if invalidated_at and invalidated_at > login_time:
+                            session.clear()
+                            return jsonify({"error": "Session invalidated"}), 401
+
         if is_settings_or_onboarding_path(request.path):
             try:
                 if requires_admin_for_settings_access(request.path, {}) and not session.get(

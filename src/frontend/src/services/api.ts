@@ -807,9 +807,21 @@ export interface AdminUser {
   auth_source: AdminAuthSource;
   is_active: boolean;
   oidc_subject: string | null;
+  saml_subject: string | null;
   created_at: string;
+  last_login_at: string | null;
+  session_invalidated_at: string | null;
   edit_capabilities: AdminUserEditCapabilities;
   settings?: Record<string, unknown>;
+}
+
+export interface AdminUserStats {
+  total_downloads: number;
+  completed: number;
+  failed: number;
+  last_download_at: string | null;
+  last_login_at: string | null;
+  session_invalidated_at: string | null;
 }
 
 interface SelfUserEditContext {
@@ -859,6 +871,16 @@ export const deleteAdminUser = async (userId: number): Promise<{ success: boolea
   return fetchJSON<{ success: boolean }>(`${API_BASE}/admin/users/${userId}`, {
     method: 'DELETE',
   });
+};
+
+export const forceLogoutUser = async (userId: number): Promise<{ success: boolean }> => {
+  return fetchJSON<{ success: boolean }>(`${API_BASE}/admin/users/${userId}/force-logout`, {
+    method: 'POST',
+  });
+};
+
+export const getAdminUserStats = async (userId: number): Promise<AdminUserStats> => {
+  return fetchJSON<AdminUserStats>(`${API_BASE}/admin/users/${userId}/stats`);
 };
 
 interface CwaUserSyncResult {

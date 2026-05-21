@@ -14,7 +14,7 @@ interface UserOverridesViewProps {
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
-  usersTab: SettingsTab;
+  usersTab: SettingsTab | undefined;
   globalUsersSettingsValues: Record<string, unknown>;
   onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
 }
