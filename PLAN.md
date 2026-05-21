@@ -58,9 +58,9 @@
 
 ## Phase 2 — Dedicated Settings Screen (Frontend)
 
-- [ ] **P2-1** Create `src/frontend/src/pages/SettingsPage.tsx`
-- [ ] **P2-2** Add routes `/settings` → redirect, `/settings/:tab` in `App.tsx`
-- [ ] **P2-3** Update `Header.tsx` — settings button navigates to `/settings` instead of opening modal
+- [x] **P2-1** Create `src/frontend/src/pages/SettingsPage.tsx`
+- [x] **P2-2** Add routes `/settings` → redirect, `/settings/:tab` in `App.tsx`
+- [x] **P2-3** Update `App.tsx` — admin settings click navigates to `/settings/general` instead of opening modal
 - [ ] **P2-4** Keep modal accessible via keyboard shortcut
 - [ ] **P2-5** Add "Settings" to navigation
 

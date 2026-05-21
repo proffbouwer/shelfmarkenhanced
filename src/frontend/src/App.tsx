@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -16,6 +16,7 @@ import { RequestConfirmationModal } from './components/RequestConfirmationModal'
 import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
+import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/ToastContainer';
 import { UrlSearchBootstrapMount } from './components/UrlSearchBootstrapMount';
 import { SearchModeProvider } from './contexts/SearchModeContext';
@@ -260,6 +261,7 @@ const AdminSettingsWarmupMount = () => {
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
 
@@ -658,14 +660,14 @@ function App() {
       if (authIsAdmin) {
         void primeUsersCache();
         void primeSettingsCache();
-        setSettingsOpen(true);
+        navigate('/settings/general');
       } else {
         setSelfSettingsOpen(true);
       }
       return;
     }
     setConfigBannerOpen(true);
-  }, [authIsAdmin, config?.settings_enabled]);
+  }, [authIsAdmin, config?.settings_enabled, navigate]);
 
   const headerRef = useCallback((el: HTMLDivElement | null) => {
     if (headerObserverRef.current) {
@@ -2720,7 +2722,7 @@ function App() {
           if (authIsAdmin) {
             void primeUsersCache();
             void primeSettingsCache();
-            setSettingsOpen(true);
+            navigate('/settings/general');
           } else {
             setSelfSettingsOpen(true);
           }
@@ -2862,6 +2864,18 @@ function App() {
                 oidcAutoRedirect={oidcAutoRedirect}
               />
             )
+          }
+        />
+        <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
+        <Route
+          path="/settings/:tab"
+          element={
+            <SettingsPage
+              authMode={authMode}
+              onShowToast={showToast}
+              onSettingsSaved={handleSettingsSaved}
+              onRefreshAuth={refreshAuth}
+            />
           }
         />
         <Route path="/*" element={appElement} />
