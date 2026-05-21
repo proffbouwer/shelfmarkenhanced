@@ -201,6 +201,7 @@ def queue_release(
     priority: int = 0,
     user_id: int | None = None,
     username: str | None = None,
+    visibility: str = 'public',
 ) -> tuple[bool, str | None]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
@@ -252,6 +253,9 @@ def queue_release(
                 output_args = {"to": email_to}
 
         # Create a source-agnostic download task from release data
+        _raw_visibility = str(visibility).strip().lower() if visibility else 'public'
+        _visibility = _raw_visibility if _raw_visibility in ('public', 'private') else 'public'
+
         task = DownloadTask(
             task_id=release_data["source_id"],
             source=source,
@@ -273,6 +277,7 @@ def queue_release(
             user_id=user_id,
             username=username,
             request_id=request_id,
+            visibility=_visibility,
             **retry_resolution_fields,
         )
 

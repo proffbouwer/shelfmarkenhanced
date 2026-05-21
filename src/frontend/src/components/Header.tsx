@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useMemo, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useDismiss } from '../hooks/useDismiss';
 import { useMountEffect } from '../hooks/useMountEffect';
@@ -471,6 +472,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                   <span>Report a Bug</span>
                 </a>
 
+                {/* Library Button */}
+                <LibraryButton closeDropdown={closeDropdown} />
+
                 {/* Settings Button */}
                 {onSettingsClick && (
                   <button
@@ -732,3 +736,27 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
     );
   },
 );
+
+// ---------------------------------------------------------------------------
+// LibraryButton — standalone component so it can call useNavigate
+// ---------------------------------------------------------------------------
+function LibraryButton({ closeDropdown }: { closeDropdown: () => void }) {
+  const navigate = useNavigate();
+  const handleClick = useCallback(() => {
+    closeDropdown();
+    navigate('/library');
+  }, [closeDropdown, navigate]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover-surface"
+    >
+      <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+      </svg>
+      <span>Library</span>
+    </button>
+  );
+}

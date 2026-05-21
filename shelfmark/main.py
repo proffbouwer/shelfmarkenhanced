@@ -44,6 +44,7 @@ from shelfmark.core.auth_routes import register_auth_routes
 from shelfmark.core.static_routes import register_debug_routes, register_static_routes
 from shelfmark.core.metadata_routes import register_metadata_routes
 from shelfmark.core.download_routes import register_download_routes
+from shelfmark.core.library_routes import register_library_routes
 from shelfmark.core.settings_routes import register_settings_routes
 from shelfmark.core.websocket_handlers import register_websocket_handlers
 
@@ -362,6 +363,7 @@ register_metadata_routes(app)
 register_download_routes(
     app, user_db, download_history_service, ws_manager, backend, activity_view_state_service
 )
+register_library_routes(app, download_history_service)
 register_settings_routes(app)
 register_websocket_handlers(socketio, backend, ws_manager)
 

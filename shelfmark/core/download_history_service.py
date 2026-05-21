@@ -273,6 +273,7 @@ class DownloadHistoryService:
         preview: str | None,
         content_type: str | None,
         origin: str,
+        visibility: str = 'public',
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
         """Record a download at queue time with final_status='active'.
@@ -293,6 +294,7 @@ class DownloadHistoryService:
             msg = "title must be a non-empty string"
             raise ValueError(msg)
         normalized_origin = _normalize_origin(origin)
+        normalized_visibility = visibility if visibility in ('public', 'private') else 'public'
         normalized_retry_payload = self._serialize_retry_payload(retry_payload)
         recorded_at = now_utc_iso()
 
@@ -305,15 +307,16 @@ class DownloadHistoryService:
                     task_id, user_id, username, request_id,
                     source, source_display_name,
                     title, author, format, size, preview, content_type,
-                    origin, final_status,
+                    origin, final_status, visibility,
                     status_message, download_path, retry_payload,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     final_status = 'active',
                     status_message = NULL,
                     download_path = NULL,
+                    visibility = excluded.visibility,
                     retry_payload = excluded.retry_payload,
                     terminal_at = ?
                 """,
@@ -331,6 +334,7 @@ class DownloadHistoryService:
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
                         normalized_origin,
+                        normalized_visibility,
                         normalized_retry_payload,
                         recorded_at,
                         recorded_at,
@@ -400,6 +404,98 @@ class DownloadHistoryService:
                 (normalized_task_id,),
             ).fetchone()
             return self._row_to_dict(row)
+        finally:
+            conn.close()
+
+    def delete_by_task_id(self, task_id: str) -> int:
+        """Delete a download_history row by task_id. Returns rows deleted."""
+        normalized_task_id = _normalize_task_id(task_id)
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM download_history WHERE task_id = ?",
+                    (normalized_task_id,),
+                )
+                conn.commit()
+                return int(cursor.rowcount) if cursor.rowcount is not None else 0
+            finally:
+                conn.close()
+
+    def list_library(
+        self,
+        *,
+        is_admin: bool,
+        db_user_id: int | None,
+        page: int = 1,
+        page_size: int = 50,
+        visibility: str = "all",
+        search_query: str | None = None,
+        final_status: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return a paginated list of terminal downloads for the Library screen.
+
+        Non-admin users see:
+        - all public downloads (complete)
+        - their own private downloads (any terminal status)
+
+        Admin users see everything.
+        """
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        # Only terminal rows
+        terminal_statuses = ("complete", "error", "cancelled")
+        if final_status and final_status in terminal_statuses:
+            conditions.append("final_status = ?")
+            params.append(final_status)
+        else:
+            placeholders = ",".join("?" * len(terminal_statuses))
+            conditions.append(f"final_status IN ({placeholders})")
+            params.extend(terminal_statuses)
+
+        # Visibility scoping
+        if not is_admin:
+            if visibility == "public":
+                conditions.append("visibility = 'public'")
+            elif visibility == "private":
+                conditions.append("visibility = 'private' AND user_id = ?")
+                params.append(db_user_id)
+            else:
+                # "all": public ones OR user's own private ones
+                conditions.append("(visibility = 'public' OR (visibility = 'private' AND user_id = ?))")
+                params.append(db_user_id)
+        elif visibility in ("public", "private"):
+            conditions.append("visibility = ?")
+            params.append(visibility)
+
+        # Free-text search
+        if search_query:
+            like = f"%{search_query}%"
+            conditions.append("(title LIKE ? OR author LIKE ?)")
+            params.extend([like, like])
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        conn = self._connect()
+        try:
+            total_row = conn.execute(
+                f"SELECT COUNT(*) FROM download_history {where_clause}", params
+            ).fetchone()
+            total = int(total_row[0]) if total_row else 0
+
+            offset = (page - 1) * page_size
+            rows = conn.execute(
+                f"SELECT * FROM download_history {where_clause} ORDER BY terminal_at DESC, id DESC LIMIT ? OFFSET ?",
+                [*params, page_size, offset],
+            ).fetchall()
+
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                normalized = self._normalize_row_dict(dict(row))
+                if normalized is not None:
+                    result.append(normalized)
+            return result, total
         finally:
             conn.close()
 

@@ -210,6 +210,7 @@ class UserDB:
                 self._migrate_request_delivery_columns(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
+                self._migrate_download_history_visibility(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -276,6 +277,23 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "retry_payload" not in column_names:
             conn.execute("ALTER TABLE download_history ADD COLUMN retry_payload TEXT")
+
+    def _migrate_download_history_visibility(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_history has visibility + private_storage_path columns and index."""
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "visibility" not in column_names:
+            conn.execute(
+                "ALTER TABLE download_history ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'"
+            )
+        if "private_storage_path" not in column_names:
+            conn.execute("ALTER TABLE download_history ADD COLUMN private_storage_path TEXT")
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_download_history_visibility
+            ON download_history (visibility, user_id, terminal_at DESC)
+            """
+        )
 
     def create_user(
         self,

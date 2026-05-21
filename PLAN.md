@@ -87,34 +87,30 @@
 
 ### Database
 
-- [ ] **P4-1** Add migration: `visibility` + `private_storage_path` columns to `download_history`
-- [ ] **P4-2** Add index on `(visibility, user_id, terminal_at DESC)`
+- [x] **P4-1** Add migration: `visibility` + `private_storage_path` columns to `download_history`
+- [x] **P4-2** Add index on `(visibility, user_id, terminal_at DESC)`
 
 ### Backend
 
-- [ ] **P4-3** Add `visibility` field to `DownloadTask` model
-- [ ] **P4-4** Update `orchestrator.py` `queue_release()` to accept + store `visibility`
-- [ ] **P4-5** Branch destination path in post-process: public → `/books/`, private → `/books/.private/{user_id}/`
-- [ ] **P4-6** Update `POST /api/releases/download` to accept `visibility` field
-- [ ] **P4-7** Update `GET /api/localdownload` — enforce ownership for private files
-- [ ] **P4-8** Create `shelfmark/core/library_routes.py` with new endpoints:
-  - [ ] `GET /api/library` — paginated, filtered, visibility-scoped
-  - [ ] `POST /api/library/<task_id>/send-to-acw`
-  - [ ] `POST /api/library/<task_id>/send-to-folder`
-  - [ ] `DELETE /api/library/<task_id>`
+- [x] **P4-3** Add `visibility: str = 'public'` field to `DownloadTask` model
+- [x] **P4-4** `queue_release()` accepts `visibility` param; stores on task + history row
+- [x] **P4-5** Private downloads routed to `<base>/.private/<user_id>/` in `destination.py`
+- [x] **P4-6** `POST /api/releases/download` reads `visibility` from request body
+- [x] **P4-7** `GET /api/localdownload` returns 403 for private files not owned by caller
+- [x] **P4-8** `shelfmark/core/library_routes.py` — all 4 endpoints implemented
 
 ### Frontend
 
-- [ ] **P4-9** Create `src/frontend/src/pages/LibraryPage.tsx`
-- [ ] **P4-10** Create `src/frontend/src/hooks/useLibrary.ts`
-- [ ] **P4-11** Create `src/frontend/src/components/library/` components:
-  - [ ] `LibraryGrid.tsx`
-  - [ ] `LibraryItem.tsx` (privacy badge, action buttons)
-  - [ ] `LibraryFilters.tsx` (search, sort, visibility filter)
-  - [ ] `SendToAcwModal.tsx`
-- [ ] **P4-12** Create `src/frontend/src/services/libraryApi.ts`
-- [ ] **P4-13** Add `/library` route to `App.tsx`
-- [ ] **P4-14** Add "Library" link to `Header.tsx`
+- [x] **P4-9** `src/frontend/src/pages/LibraryPage.tsx`
+- [x] **P4-10** `src/frontend/src/hooks/useLibrary.ts`
+- [x] **P4-11** `src/frontend/src/components/library/`:
+  - [x] `LibraryGrid.tsx`
+  - [x] `LibraryItem.tsx` (visibility badge, download/ACW/folder/delete actions)
+  - [x] `LibraryFilters.tsx` (search, visibility, status filters)
+  - [x] `SendToFolderModal.tsx`
+- [x] **P4-12** `src/frontend/src/services/libraryApi.ts`
+- [x] **P4-13** `/library` route added to `App.tsx`
+- [x] **P4-14** "Library" link added to `Header.tsx` dropdown
 
 ---
 

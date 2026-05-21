@@ -368,6 +368,9 @@ def register_download_routes(
         source_name = normalize_source(getattr(task, "source", None))
         source_display = get_source_display_name(source_name)
 
+        raw_visibility = getattr(task, "visibility", "public")
+        task_visibility = raw_visibility if raw_visibility in ("public", "private") else "public"
+
         try:
             download_history_service.record_download(
                 task_id=task_id,
@@ -383,6 +386,7 @@ def register_download_routes(
                 preview=normalize_optional_text(getattr(task, "preview", None)),
                 content_type=normalize_optional_text(getattr(task, "content_type", None)),
                 origin=origin,
+                visibility=task_visibility,
                 retry_payload=backend.serialize_task_for_retry(task),
             )
         except _OPERATIONAL_ERRORS as exc:
@@ -578,11 +582,14 @@ def register_download_routes(
             )
             if on_behalf_error:
                 return on_behalf_error
+            raw_vis = data.get("visibility", "public")
+            req_visibility = raw_vis if raw_vis in ("public", "private") else "public"
             success, error_msg = backend.queue_release(
                 release_payload,
                 priority,
                 user_id=db_user_id,
                 username=_username,
+                visibility=req_visibility,
             )
 
             if success:
@@ -648,6 +655,10 @@ def register_download_routes(
                         history_row = download_history_service.get_by_task_id(book_id)
                         if history_row is not None:
                             owner_user_id = history_row.get("user_id")
+                            row_visibility = history_row.get("visibility", "public")
+                            # Private downloads: only the owner (or admins) may download
+                            if row_visibility == "private" and not is_admin and owner_user_id != db_user_id:
+                                return jsonify({"error": "Access denied"}), 403
                             if is_admin or owner_user_id == db_user_id:
                                 download_path = DownloadHistoryService._resolve_existing_download_path(
                                     history_row.get("download_path")

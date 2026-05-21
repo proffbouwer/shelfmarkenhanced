@@ -16,6 +16,7 @@ import { RequestConfirmationModal } from './components/RequestConfirmationModal'
 import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
+import { LibraryPage } from './pages/LibraryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/ToastContainer';
 import { UrlSearchBootstrapMount } from './components/UrlSearchBootstrapMount';
@@ -2866,6 +2867,7 @@ function App() {
             )
           }
         />
+        <Route path="/library" element={<LibraryPage onShowToast={showToast} />} />
         <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
         <Route
           path="/settings/:tab"

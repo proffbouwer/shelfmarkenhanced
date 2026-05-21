@@ -69,7 +69,11 @@ def validate_destination(
 
 
 def get_final_destination(task: DownloadTask) -> Path:
-    """Get final destination directory, with content-type routing support."""
+    """Get final destination directory, with content-type routing support.
+
+    Private downloads are placed under <base>/.private/<user_id>/ so they
+    are never visible in the public library and can be scoped per-user.
+    """
     is_audiobook = check_audiobook(task.content_type)
 
     try:
@@ -78,10 +82,17 @@ def get_final_destination(task: DownloadTask) -> Path:
         override = None
 
     if override:
-        return override
+        base = override
+    else:
+        base = get_destination(
+            is_audiobook=is_audiobook,
+            user_id=task.user_id,
+            username=task.username,
+        )
 
-    return get_destination(
-        is_audiobook=is_audiobook,
-        user_id=task.user_id,
-        username=task.username,
-    )
+    task_visibility = getattr(task, 'visibility', 'public')
+    if task_visibility == 'private':
+        user_bucket = str(task.user_id) if task.user_id is not None else 'anonymous'
+        return base / '.private' / user_bucket
+
+    return base

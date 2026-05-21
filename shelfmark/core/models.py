@@ -137,6 +137,9 @@ class DownloadTask:
     username: str | None = None  # Username for {User} template variable
     request_id: int | None = None  # Origin request ID when queued from request fulfilment
 
+    # Download privacy: 'public' (shared /books/) or 'private' (/books/.private/{user_id}/)
+    visibility: str = 'public'
+
     # Runtime state
     priority: int = 0
     added_time: float = field(default_factory=time.time)
