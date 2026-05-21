@@ -68,18 +68,18 @@
 
 ## Phase 3 — Dependency Upgrades + Magic UI
 
-- [ ] **P3-1** Investigate `authlib <1.8` cap — read changelog, widen if safe
-- [ ] **P3-2** Upgrade all Python deps (`uv lock --upgrade`), run tests
-- [ ] **P3-3** Upgrade `gevent` + `Flask-SocketIO` as a pair, verify WebSocket
-- [ ] **P3-4** Install `framer-motion` for Magic UI
-- [ ] **P3-5** Copy + adapt Magic UI components to `src/frontend/src/components/ui/magic/`:
-  - [ ] `AnimatedTabs.tsx` — Settings tab navigation
-  - [ ] `ShimmerButton.tsx` — Primary action buttons
-  - [ ] `BlurFade.tsx` — Page/card load animations
-  - [ ] `BorderBeam.tsx` — Active download card highlight
-  - [ ] `NumberTicker.tsx` — Queue/download count stats
-  - [ ] `TextReveal.tsx` — Onboarding welcome
-- [ ] **P3-6** Adapt Tailwind v3 class syntax → v4 CSS variable syntax in all copied components
+- [x] **P3-1** Investigate `authlib <1.8` cap — 1.8 doesn't exist; latest is 1.7.2; widened to `>=1.7.0`
+- [x] **P3-2** Upgrade all Python deps (`uv lock --upgrade`) — 20 packages updated
+- [x] **P3-3** gevent 26.4→26.5, Flask-SocketIO 5.6.1 already latest; pair is fine
+- [x] **P3-4** Install `motion` package (motion/react API, replaces framer-motion branding)
+- [x] **P3-5** Copy + adapt Magic UI components to `src/frontend/src/components/ui/magic/`:
+  - [x] `AnimatedBackground.tsx` — animated highlight primitive (AnimatedTabs built on this)
+  - [x] `ShimmerButton.tsx` — Primary action buttons
+  - [x] `BlurFade.tsx` — Page/card load animations
+  - [x] `BorderBeam.tsx` — Active download card highlight
+  - [x] `NumberTicker.tsx` — Queue/download count stats
+  - [x] `TextReveal.tsx` — Onboarding welcome
+- [x] **P3-6** Tailwind v4 CSS variable syntax applied; keyframes added to styles.css as `@utility`
 
 ---
 

@@ -21,7 +21,7 @@ dependencies = [
     "rarfile",
     "qbittorrent-api",
     "transmission-rpc",
-    "authlib>=1.7.0,<1.8",
+    "authlib>=1.7.0",
     "apprise>=1.9.0",
 ]
 
