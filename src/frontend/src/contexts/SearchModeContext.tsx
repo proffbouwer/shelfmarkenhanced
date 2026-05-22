@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { createContext, useContext, useMemo } from 'react';
 
+import { SEARCH_MODE } from '../types';
 import type { SearchMode } from '../types';
 
 interface SearchModeContextValue {
@@ -10,12 +11,13 @@ interface SearchModeContextValue {
 
 const SearchModeContext = createContext<SearchModeContextValue | null>(null);
 
+const DEFAULT_SEARCH_MODE: SearchModeContextValue = {
+  searchMode: SEARCH_MODE.DIRECT,
+  isUniversalMode: false,
+};
+
 export function useSearchMode(): SearchModeContextValue {
-  const ctx = useContext(SearchModeContext);
-  if (!ctx) {
-    throw new Error('useSearchMode must be used within SearchModeProvider');
-  }
-  return ctx;
+  return useContext(SearchModeContext) ?? DEFAULT_SEARCH_MODE;
 }
 
 interface SearchModeProviderProps {
