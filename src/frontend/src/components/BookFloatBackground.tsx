@@ -147,9 +147,10 @@ export function BookFloatBackground({ visible = true }: Props) {
     }
 
     // ── Sprite factory ─────────────────────────────────────────────────────
-    function makeSprite(layerIdx: number, startX: number): Sprite {
+    function makeSprite(layerIdx: number, startX: number): Sprite | null {
       const cfg = LAYER_CONFIG[layerIdx];
       const img = loadedImages[Math.floor(Math.random() * loadedImages.length)];
+      if (!img) return null;
       const ratio = img.naturalWidth > 0 && img.naturalHeight > 0
         ? img.naturalWidth / img.naturalHeight
         : 0.75; // typical book cover ratio
@@ -188,6 +189,7 @@ export function BookFloatBackground({ visible = true }: Props) {
         : -cw * 0.1;
       while (rightMost < cw * 1.15) {
         const s = makeSprite(layerIdx, rightMost);
+        if (!s) break;
         sprites[layerIdx].push(s);
         rightMost = Math.max(...sprites[layerIdx].map(s => s.x + s.w / 2));
       }

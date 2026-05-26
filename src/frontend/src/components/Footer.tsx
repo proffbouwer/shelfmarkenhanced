@@ -23,12 +23,12 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
     >
       <div className="mx-auto flex max-w-7xl items-baseline justify-center gap-2 px-4 sm:px-6 lg:px-8">
         <a
-          href="https://github.com/calibrain/shelfmark"
+          href="https://github.com/proffbouwer/shelfmarkenhanced"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm font-medium opacity-70 transition-opacity hover:opacity-100"
         >
-          Shelfmark
+          Shelfmark Enhanced
         </a>
         <span
           className="text-xs font-normal opacity-40"

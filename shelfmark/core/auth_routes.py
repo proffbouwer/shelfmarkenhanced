@@ -177,7 +177,7 @@ def register_auth_routes(app: Flask, user_db: UserDB | None, user_db_path: str) 
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://images.unsplash.com https://covers.openlibrary.org https://hardcover.app https://*.cloudfront.net; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws: wss:",
         )
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
