@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
@@ -65,6 +65,7 @@ import {
   setBookTargetState,
   type DownloadReleasePayload,
 } from './services/api';
+import { fetchLibrary } from './services/libraryApi';
 import type {
   Book,
   Release,
@@ -769,6 +770,20 @@ function App() {
   // Compute visibility states
   const hasResults = books.length > 0;
   const isInitialState = !hasResults;
+
+  const [libraryPreviewUrls, setLibraryPreviewUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchLibrary({ page_size: 50, final_status: 'complete' })
+      .then(data => {
+        const urls = data.items
+          .map(i => i.preview)
+          .filter((u): u is string => Boolean(u));
+        setLibraryPreviewUrls(urls);
+      })
+      .catch(() => {/* ignore */});
+  }, [isAuthenticated]);
 
   useStatusChangeNotifications({
     currentStatus,
@@ -2403,7 +2418,7 @@ function App() {
   const mainAppContent = (
     <SearchModeProvider searchMode={effectiveSearchMode}>
       {/* Floating book-cover background — visible only on the empty home screen */}
-      <BookFloatBackground visible={isInitialState} />
+      <BookFloatBackground visible={isInitialState} imageUrls={libraryPreviewUrls} />
 
       <div ref={headerRef} className="fixed top-0 right-0 left-0 z-40">
         <Header

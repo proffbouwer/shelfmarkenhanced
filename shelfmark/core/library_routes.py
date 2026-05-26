@@ -212,6 +212,7 @@ def _row_to_library_item(row: dict[str, Any]) -> dict[str, Any]:
         "format": row.get("format"),
         "size": row.get("size"),
         "preview": row.get("preview"),
+        "description": row.get("description"),
         "content_type": row.get("content_type"),
         "source": row.get("source"),
         "source_display_name": row.get("source_display_name"),

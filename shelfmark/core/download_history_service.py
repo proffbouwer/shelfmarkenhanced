@@ -271,8 +271,9 @@ class DownloadHistoryService:
         file_format: str | None,
         size: str | None,
         preview: str | None,
-        content_type: str | None,
-        origin: str,
+        description: str | None = None,
+        content_type: str | None = None,
+        origin: str = 'direct',
         visibility: str = 'public',
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
@@ -306,12 +307,12 @@ class DownloadHistoryService:
                 INSERT INTO download_history (
                     task_id, user_id, username, request_id,
                     source, source_display_name,
-                    title, author, format, size, preview, content_type,
+                    title, author, format, size, preview, description, content_type,
                     origin, final_status, visibility,
                     status_message, download_path, retry_payload,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     final_status = 'active',
                     status_message = NULL,
@@ -332,6 +333,7 @@ class DownloadHistoryService:
                         normalize_optional_text(file_format),
                         normalize_optional_text(size),
                         normalize_optional_text(preview),
+                        normalize_optional_text(description),
                         normalize_optional_text(content_type),
                         normalized_origin,
                         normalized_visibility,

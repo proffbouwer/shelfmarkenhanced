@@ -16,6 +16,7 @@ export interface LibraryItem {
   format: string | null;
   size: string | null;
   preview: string | null;
+  description?: string | null;
   content_type: string | null;
   source: string;
   source_display_name: string | null;

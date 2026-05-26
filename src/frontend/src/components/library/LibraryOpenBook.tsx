@@ -162,7 +162,7 @@ export function LibraryOpenBook({ book, onClose }: Props) {
               }}
             />
 
-            {/* Layer-text — cover image page */}
+            {/* Layer-text — metadata page */}
             <div
               style={{
                 ...pageBase,
@@ -176,7 +176,7 @@ export function LibraryOpenBook({ book, onClose }: Props) {
                 style={{
                   width: '100%',
                   height: '100%',
-                  background: coverBg,
+                  background: '#fff',
                   boxShadow:
                     'inset 0 0 7px 4px hsla(0,13%,82%,0.43), -1px 1px 13px 0 rgba(34,27,20,0.49)',
                   transform: hovered ? 'rotateY(7deg)' : 'rotateY(17deg)',
@@ -186,20 +186,60 @@ export function LibraryOpenBook({ book, onClose }: Props) {
                   borderRadius: '2px',
                 }}
               >
-                {!book.preview && (
-                  <div
+                {/* Metadata content */}
+                <div
+                  style={{
+                    fontFamily: 'Georgia, serif',
+                    padding: '1.5rem',
+                    overflowY: 'auto',
+                    height: '100%',
+                    color: '#221b14',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <h2
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: '100%',
-                      color: 'rgba(255,255,255,0.3)',
-                      fontSize: '3rem',
+                      fontFamily: 'Palatino Linotype, Palatino, serif',
+                      fontStyle: 'italic',
+                      fontSize: '1rem',
+                      margin: '0 0 1rem',
+                      lineHeight: 1.3,
+                      color: '#2e1800',
                     }}
                   >
-                    📚
-                  </div>
-                )}
+                    {book.title}
+                  </h2>
+                  {book.author && (
+                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                      <strong>Author:</strong> {book.author}
+                    </p>
+                  )}
+                  {book.format && (
+                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                      <strong>Format:</strong> {book.format.toUpperCase()}
+                    </p>
+                  )}
+                  {book.content_type && (
+                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                      <strong>Type:</strong> {book.content_type}
+                    </p>
+                  )}
+                  {book.size && (
+                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                      <strong>Size:</strong> {book.size}
+                    </p>
+                  )}
+                  <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                    <strong>Source:</strong>{' '}
+                    {book.source_display_name ?? book.source}
+                  </p>
+                  {book.terminal_at && (
+                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
+                      <strong>Downloaded:</strong>{' '}
+                      {new Date(book.terminal_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -301,7 +341,7 @@ export function LibraryOpenBook({ book, onClose }: Props) {
               }}
             />
 
-            {/* Layer-text right — metadata page */}
+            {/* Layer-text right — description / cover fallback page */}
             <div
               style={{
                 ...pageBase,
@@ -325,60 +365,18 @@ export function LibraryOpenBook({ book, onClose }: Props) {
                   borderRadius: '2px',
                 }}
               >
-                {/* Metadata content */}
-                <div
-                  style={{
-                    fontFamily: 'Georgia, serif',
-                    padding: '1.5rem',
-                    overflowY: 'auto',
-                    height: '100%',
-                    color: '#221b14',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontFamily: 'Palatino Linotype, Palatino, serif',
-                      fontStyle: 'italic',
-                      fontSize: '1rem',
-                      margin: '0 0 1rem',
-                      lineHeight: 1.3,
-                      color: '#2e1800',
-                    }}
-                  >
-                    {book.title}
-                  </h2>
-                  {book.author && (
-                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                      <strong>Author:</strong> {book.author}
-                    </p>
-                  )}
-                  {book.format && (
-                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                      <strong>Format:</strong> {book.format.toUpperCase()}
-                    </p>
-                  )}
-                  {book.content_type && (
-                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                      <strong>Type:</strong> {book.content_type}
-                    </p>
-                  )}
-                  {book.size && (
-                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                      <strong>Size:</strong> {book.size}
-                    </p>
-                  )}
-                  <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                    <strong>Source:</strong>{' '}
-                    {book.source_display_name ?? book.source}
-                  </p>
-                  {book.terminal_at && (
-                    <p style={{ margin: '0.35rem 0', fontSize: '0.72rem' }}>
-                      <strong>Downloaded:</strong>{' '}
-                      {new Date(book.terminal_at).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
+                {book.description ? (
+                  <div style={{ fontFamily: 'Georgia, serif', padding: '1.5rem', overflowY: 'auto', height: '100%', color: '#221b14', boxSizing: 'border-box' }}>
+                    <h3 style={{ fontFamily: 'Palatino Linotype, Palatino, serif', fontStyle: 'italic', fontSize: '0.8rem', margin: '0 0 0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>About this book</h3>
+                    <p style={{ fontSize: '0.7rem', lineHeight: 1.6, margin: 0 }}>{book.description}</p>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', height: '100%', background: coverBg, borderRadius: '2px' }}>
+                    {!book.preview && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.3)', fontSize: '3rem' }}>📚</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

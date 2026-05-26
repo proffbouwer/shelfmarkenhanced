@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS download_history (
     format TEXT,
     size TEXT,
     preview TEXT,
+    description TEXT,
     content_type TEXT,
     origin TEXT NOT NULL DEFAULT 'direct',
     final_status TEXT NOT NULL,
@@ -212,6 +213,7 @@ class UserDB:
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_visibility(conn)
+                self._migrate_download_history_description(conn)
                 self._migrate_users_sso_columns(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
@@ -310,6 +312,12 @@ class UserDB:
             ON download_history (visibility, user_id, terminal_at DESC)
             """
         )
+
+    def _migrate_download_history_description(self, conn: sqlite3.Connection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(download_history)")}
+        if "description" not in cols:
+            conn.execute("ALTER TABLE download_history ADD COLUMN description TEXT")
+            logger.info("Migrated download_history: added description column")
 
     def create_user(
         self,

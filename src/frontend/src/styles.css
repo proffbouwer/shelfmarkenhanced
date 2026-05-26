@@ -667,7 +667,7 @@
   .search-initial-state {
     flex: 1;
     justify-content: flex-start;
-    padding-top: 20vh; /* Position in upper portion of screen */
+    padding-top: 8vh; /* Position in upper portion of screen */
   }
 
   /* Mobile-friendly book card layout */
@@ -676,7 +676,7 @@
   @media (max-width: 639px) {
     .search-initial-state {
       justify-content: flex-start;
-      padding-top: 18vh; /* push the search UI toward the upper third */
+      padding-top: 6vh; /* push the search UI toward the upper third */
     }
 
     /* When advanced filters are visible, pull the search bar to the very top */
