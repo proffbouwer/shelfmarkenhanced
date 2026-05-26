@@ -125,21 +125,21 @@
 
 ### Docker
 
-- [ ] **P5-1** Create `compose/docker-compose.gluetun.yml` overlay
-- [ ] **P5-2** Move port mapping from `shelfmark` → `gluetun` in the overlay
-- [ ] **P5-3** Add `network_mode: "service:gluetun"` to shelfmark in overlay
-- [ ] **P5-4** Document usage: `docker compose -f ... -f compose/docker-compose.gluetun.yml up`
+- [x] **P5-1** Create `compose/docker-compose.gluetun.yml` overlay
+- [x] **P5-2** Move port mapping from `shelfmark` → `gluetun` in the overlay
+- [x] **P5-3** Add `network_mode: "service:gluetun"` to shelfmark in overlay
+- [x] **P5-4** Document usage: `docker compose -f ... -f compose/docker-compose.gluetun.yml up`
 
 ### Backend
 
-- [ ] **P5-5** Create `shelfmark/config/settings/vpn_settings.py` — provider, type, credentials, regions, kill switch fields
-- [ ] **P5-6** Add `GET /api/vpn/status` endpoint → calls Gluetun control API at `http://gluetun:8000/v1/publicip/ip`
-- [ ] **P5-7** VPN settings write to `.env.vpn` file; show "restart required" banner on change
+- [x] **P5-5** Create `shelfmark/config/settings/vpn_settings.py` — provider, type, credentials, regions, kill switch fields
+- [x] **P5-6** Add `GET /api/vpn/status` endpoint → calls Gluetun control API at `http://gluetun:8000/v1/publicip/ip`
+- [x] **P5-7** VPN provider fields are reference-only (Gluetun manages them via env vars); restart note shown in field descriptions
 
 ### Frontend
 
-- [ ] **P5-8** Add VPN settings tab to Settings page
-- [ ] **P5-9** VPN status indicator in Header (connected / disconnected)
+- [x] **P5-8** Add VPN settings tab to Settings page
+- [x] **P5-9** VPN status indicator in Header (connected / disconnected)
 
 ---
 
@@ -179,9 +179,9 @@
 
 ## Docker / CI
 
-- [ ] **CI-1** Create `Dockerfile.enhanced` (or add `LABEL` to existing + rename image in compose)
-- [ ] **CI-2** Update `compose/docker-compose.yml` image name → `enhanced_shelfmark`
-- [ ] **CI-3** Add GitHub Actions workflow to push `enhanced_shelfmark` image to GHCR under `proffbouwer/enhanced-shelfmark`
+- [x] **CI-1** Add OCI `LABEL` to `shelfmark` stage in Dockerfile identifying it as enhanced-shelfmark
+- [x] **CI-2** Update `compose/docker-compose.enhanced.yml` to reference `ghcr.io/proffbouwer/enhanced-shelfmark:latest`
+- [x] **CI-3** GitHub Actions workflow `.github/workflows/build-and-publish-enhanced.yml` builds + pushes to GHCR on push to main/development/tags
 
 ---
 

@@ -11,6 +11,7 @@ import type {
   CustomSettingsFieldRendererProps,
 } from './types';
 import { UsersManagementField } from './UsersManagementField';
+import { VpnStatusWidget } from './VpnStatusWidget';
 
 type CustomFieldRenderer = ComponentType<CustomSettingsFieldRendererProps>;
 type CustomFieldLayoutResolver = (
@@ -59,6 +60,9 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   },
   oidc_env_info: {
     renderer: OidcEnvInfo,
+  },
+  vpn_status: {
+    renderer: VpnStatusWidget,
   },
 };
 

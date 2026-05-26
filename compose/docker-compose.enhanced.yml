@@ -1,12 +1,17 @@
 services:
   enhanced-shelfmark:
+    # Production: pull from GHCR
     image: ghcr.io/proffbouwer/enhanced-shelfmark:latest
+    # Local dev: uncomment below and comment out the image line above
+    # build:
+    #   context: ..
+    #   target: shelfmark
     container_name: enhanced-shelfmark
     environment:
       PUID: 1000
       PGID: 1000
     ports:
-      - 8084:8084
+      - "${SHELFMARK_PORT:-6060}:8084"
     restart: unless-stopped
     volumes:
       - /path/to/books:/books           # Default destination for book downloads

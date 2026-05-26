@@ -502,6 +502,7 @@ export type DownloadReleasePayload = {
   subtitle?: string;
   search_author?: string;
   search_mode?: 'direct' | 'universal';
+  visibility?: 'public' | 'private';
 };
 
 export const downloadRelease = async (

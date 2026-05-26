@@ -68,6 +68,9 @@ interface HeaderProps {
   activeQueryTarget?: string;
   onQueryTargetChange?: (target: string) => void;
   activeQueryField?: MetadataSearchField | null;
+  vpnConnected?: boolean | null;
+  downloadVisibility?: 'public' | 'private';
+  onDownloadVisibilityChange?: (v: 'public' | 'private') => void;
 }
 
 const applyTheme = (preference: string): void => {
@@ -124,6 +127,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       activeQueryTarget = 'general',
       onQueryTargetChange,
       activeQueryField = null,
+      vpnConnected = null,
+      downloadVisibility = 'public',
+      onDownloadVisibilityChange,
     },
     ref,
   ) => {
@@ -402,6 +408,25 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
           </button>
         )}
 
+        {/* VPN Status Pill */}
+        {vpnConnected !== null && (
+          <div
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium select-none ${
+              vpnConnected
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                : 'bg-red-500/15 text-red-600 dark:text-red-400'
+            }`}
+            title={vpnConnected ? 'VPN connected' : 'VPN disconnected'}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                vpnConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
+              }`}
+            />
+            <span className="hidden sm:inline">VPN</span>
+          </div>
+        )}
+
         {/* User Menu Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
@@ -603,6 +628,49 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                           </svg>
                         </button>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Download visibility toggle — available to all authenticated users */}
+                {isAuthenticated && onDownloadVisibilityChange && (
+                  <div
+                    className="space-y-2 border-t px-4 py-3"
+                    style={{ borderColor: 'var(--border-muted)' }}
+                  >
+                    <div className="text-xs font-medium tracking-wide uppercase opacity-70">
+                      Download visibility
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-soft)' }}>
+                      <button
+                        type="button"
+                        onClick={() => onDownloadVisibilityChange('public')}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                          downloadVisibility === 'public'
+                            ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400 shadow-sm'
+                            : 'opacity-60 hover:opacity-80'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                          <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                        </svg>
+                        Public
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDownloadVisibilityChange('private')}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                          downloadVisibility === 'private'
+                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 shadow-sm'
+                            : 'opacity-60 hover:opacity-80'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                        </svg>
+                        Private
+                      </button>
                     </div>
                   </div>
                 )}

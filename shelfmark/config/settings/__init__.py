@@ -50,6 +50,7 @@ from shelfmark.config.settings import network_settings as _network_settings  # n
 from shelfmark.config.settings import download_settings as _download_settings  # noqa: E402, F401
 from shelfmark.config.settings import source_settings as _source_settings  # noqa: E402, F401
 from shelfmark.config.settings import advanced_settings as _advanced_settings  # noqa: E402, F401
+from shelfmark.config.settings import vpn_settings as _vpn_settings  # noqa: E402, F401
 
 # Re-export public symbols that external code imports from shelfmark.config.settings
 from shelfmark.config.settings.general_settings import (  # noqa: E402, F401

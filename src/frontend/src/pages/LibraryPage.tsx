@@ -11,7 +11,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { LibraryGrid } from '../components/library/LibraryGrid';
+import { LibraryShelfView } from '../components/library/LibraryShelfView';
 import { LibraryFilters } from '../components/library/LibraryFilters';
 import { useLibrary } from '../hooks/useLibrary';
 
@@ -99,8 +99,9 @@ export function LibraryPage({ onShowToast }: LibraryPageProps) {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
-          <LibraryGrid
+          <LibraryShelfView
             items={items}
+            isLoading={isLoading}
             onSendToAcw={handleSendToAcw}
             onSendToFolder={handleSendToFolder}
             onDelete={handleDelete}

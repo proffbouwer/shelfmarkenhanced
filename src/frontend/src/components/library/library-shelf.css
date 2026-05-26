@@ -1,0 +1,165 @@
+@layer lib-base, lib-tokens, lib-animations, lib-components, lib-utilities;
+
+@layer lib-tokens {
+  @font-face {
+    font-family: Troubleside;
+    src: url("https://cdn.jsdelivr.net/gh/chytanka/chytanka.github.io/src/assets/fonts/Troubleside.ttf");
+    font-display: swap;
+  }
+
+  @property --item-scale {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 1;
+  }
+
+  @property --item-angle {
+    syntax: "<angle>";
+    inherits: true;
+    initial-value: 0deg;
+  }
+
+  .lib-shelf-wrap {
+    --ratio: 257 / 364;
+    --t: 0.133333334s;
+    --min-card-width: 180px;
+    --accent: oklch(from #60a6ce l c h);
+    --avarage-l: 0.48;
+    --avarage-l-2: 0.36;
+    --avarage-base: oklch(from #94a3b8 var(--avarage-l) 0.0192 h);
+    --lib-text: white;
+    --lib-surface: oklch(0.12 0.01 220);
+    --radius: 0.5rem;
+    --border-size: 0.25rem;
+  }
+}
+
+@layer lib-animations {
+  @keyframes lib-shrink-top {
+    0% { --item-scale: 0.5; --item-angle: -60deg; transform-origin: top; }
+  }
+  @keyframes lib-shrink-bottom {
+    0% { --item-scale: 0.5; --item-angle: 60deg; transform-origin: bottom; }
+  }
+}
+
+@layer lib-components {
+  .lib-shelf-wrap {
+    padding: 2rem;
+    color: var(--lib-text);
+  }
+
+  .lib-section {
+    margin-bottom: 2rem;
+    position: relative;
+    perspective: 4000px;
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(var(--min-card-width), 1fr));
+  }
+
+  .lib-section-header {
+    grid-column: 1 / -1;
+    color: var(--accent);
+    font-family: Troubleside, Arial, sans-serif;
+    font-size: 1.75rem;
+    margin: 1rem 0 0;
+    font-weight: normal;
+  }
+
+  .lib-card {
+    --deg: 0.8deg;
+    --y: 0;
+    --avarage: oklch(from var(--avarage-color, #666) var(--avarage-l) 0.0192 h);
+    --shadow-color: oklch(from var(--avarage, var(--avarage-base)) var(--avarage-l-2) c h);
+    --shadow-distance: var(--border-size);
+    border: var(--border-size) solid var(--avarage, var(--avarage-base));
+    border-radius: var(--radius);
+    background-color: var(--avarage, var(--avarage-base));
+    background-image: radial-gradient(oklch(from var(--shadow-color) l c h) 1px, transparent 0px);
+    background-repeat: repeat;
+    background-size: 7px 7px;
+    background-position: center;
+    box-shadow: 1px 1px var(--lib-surface), var(--shadow-distance) var(--shadow-distance) var(--shadow-color);
+    opacity: min(var(--item-scale), 0.85);
+    transform: rotate(var(--deg)) translateY(var(--y)) scale(var(--item-scale)) rotateX(var(--item-angle));
+    transition: all var(--t) ease-in-out;
+    will-change: transform;
+    transform-style: preserve-3d;
+    cursor: pointer;
+  }
+
+  .lib-card:hover {
+    --deg: 0deg;
+    --y: -1.25ch;
+    --shadow-distance: calc(var(--border-size) * 2);
+    opacity: 1;
+  }
+
+  @supports (animation-timeline: view()) {
+    .lib-card {
+      animation: lib-shrink-top both ease-in-out, lib-shrink-bottom both ease-in-out reverse;
+      animation-timeline: view(block);
+      animation-range: entry, exit;
+    }
+  }
+
+  .lib-card figure {
+    margin: 0;
+  }
+
+  .lib-card figure img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: var(--ratio);
+    object-fit: cover;
+    border-radius: calc(var(--radius) - var(--border-size));
+    display: block;
+  }
+
+  .lib-card-placeholder {
+    width: 100%;
+    aspect-ratio: var(--ratio);
+    border-radius: calc(var(--radius) - var(--border-size));
+    background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lib-card figcaption {
+    font-family: Troubleside, Arial, sans-serif;
+    margin: 1ch;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    word-break: break-word;
+    line-height: 1;
+    color: var(--lib-text);
+    font-size: 0.875rem;
+  }
+
+  .lib-card-author {
+    font-family: Georgia, serif;
+    font-size: 0.7rem;
+    margin: 0 1ch 1ch;
+    opacity: 0.7;
+    color: var(--lib-text);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    word-break: break-word;
+  }
+}
+
+@layer lib-utilities {
+  .lib-card:nth-child(2n) { --deg: -0.8deg; }
+  .lib-card:nth-child(2n + 1) { --deg: -0.6deg; }
+  .lib-card:nth-child(3n) { --deg: 0.6deg; }
+  .lib-card:nth-child(4n + 2) { --deg: -0.75deg; }
+  .lib-card:nth-child(5n) { --deg: 0.25deg; }
+  .lib-card:nth-child(6n + 3) { --deg: -0.3deg; }
+  .lib-card:nth-child(7n) { --deg: 0.9deg; }
+}

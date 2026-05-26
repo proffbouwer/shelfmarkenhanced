@@ -216,6 +216,7 @@ export interface CreateRequestPayload {
   note?: string;
   on_behalf_of_user_id?: number;
   context: RequestContextPayload;
+  visibility?: 'public' | 'private';
 }
 
 export interface RequestRecord {

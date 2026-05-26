@@ -1,0 +1,69 @@
+# Gluetun VPN overlay for enhanced-shelfmark
+#
+# Usage:
+#   docker compose -f compose/docker-compose.enhanced.yml \
+#                  -f compose/docker-compose.gluetun.yml up -d
+#
+# This overlay:
+#   - Adds the Gluetun VPN container
+#   - Moves the port mapping from enhanced-shelfmark to gluetun (so traffic is VPN-routed)
+#   - Puts enhanced-shelfmark on gluetun's network namespace
+#
+# Required env vars (set in your shell or a .env file):
+#   VPN_SERVICE_PROVIDER  e.g. mullvad, nordvpn, expressvpn, private internet access
+#   VPN_TYPE              wireguard or openvpn
+#   WIREGUARD_PRIVATE_KEY (for WireGuard providers)
+#   OPENVPN_USER / OPENVPN_PASSWORD (for OpenVPN providers)
+#   SERVER_COUNTRIES      e.g. Netherlands (optional, for server selection)
+#
+# See full provider docs: https://github.com/qdm12/gluetun/wiki
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # Shelfmark web UI (moved here from enhanced-shelfmark)
+      - "${SHELFMARK_PORT:-6060}:8084"
+      # Gluetun HTTP control API (used by Shelfmark VPN status endpoint)
+      - "127.0.0.1:8000:8000"
+    environment:
+      VPN_SERVICE_PROVIDER: "${VPN_SERVICE_PROVIDER:-mullvad}"
+      VPN_TYPE: "${VPN_TYPE:-wireguard}"
+      # WireGuard
+      WIREGUARD_PRIVATE_KEY: "${WIREGUARD_PRIVATE_KEY:-}"
+      WIREGUARD_ADDRESSES: "${WIREGUARD_ADDRESSES:-}"
+      # OpenVPN
+      OPENVPN_USER: "${OPENVPN_USER:-}"
+      OPENVPN_PASSWORD: "${OPENVPN_PASSWORD:-}"
+      # Server selection (optional)
+      SERVER_COUNTRIES: "${SERVER_COUNTRIES:-}"
+      SERVER_CITIES: "${SERVER_CITIES:-}"
+      # Kill switch: block all traffic if VPN drops
+      FIREWALL_VPN_INPUT_PORTS: ""
+      # HTTP control server (for Shelfmark VPN status)
+      HTTP_CONTROL_SERVER_ADDRESS: ":8000"
+      # Allow unauthenticated read access to status endpoints
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: >-
+        {"routes":[
+          {"path":"/v1/publicip/ip","methods":["GET"]},
+          {"path":"/v1/vpn/status","methods":["GET"]}
+        ]}
+    restart: unless-stopped
+    volumes:
+      - gluetun_data:/gluetun
+
+  enhanced-shelfmark:
+    # Use gluetun's network namespace so all traffic is VPN-routed
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    # Port mapping is handled by gluetun above — remove it here
+    ports: !reset []
+
+volumes:
+  gluetun_data:

@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
+import { BookFloatBackground } from './components/BookFloatBackground';
 import { AdvancedFilters } from './components/AdvancedFilters';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { DetailsModal } from './components/DetailsModal';
@@ -44,6 +45,7 @@ import { useSearch } from './hooks/useSearch';
 import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
+import { useVpnStatus } from './hooks/useVpnStatus';
 import { primeUsersCache } from './hooks/useUsersFetch';
 import { LoginPage } from './pages/LoginPage';
 import {
@@ -266,6 +268,26 @@ function App() {
   const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
+  const { data: vpnStatusData } = useVpnStatus(true);
+
+  // ── Download visibility ────────────────────────────────────────────────────
+  // 'public' = visible to all in the library; 'private' = only the downloader.
+  // Persisted across sessions; defaults to 'public'.
+  const [downloadVisibility, setDownloadVisibility] = useState<'public' | 'private'>(() => {
+    try {
+      const stored = localStorage.getItem('preferred-download-visibility');
+      return stored === 'private' ? 'private' : 'public';
+    } catch {
+      return 'public';
+    }
+  });
+  const downloadVisibilityRef = useRef(downloadVisibility);
+  downloadVisibilityRef.current = downloadVisibility;
+
+  const handleDownloadVisibilityChange = useCallback((v: 'public' | 'private') => {
+    setDownloadVisibility(v);
+    try { localStorage.setItem('preferred-download-visibility', v); } catch { /* ignore */ }
+  }, []);
 
   // Realtime status with WebSocket and polling fallback
   // Socket connection is managed by SocketProvider in main.tsx
@@ -982,7 +1004,11 @@ function App() {
   const submitRequests = useCallback(
     async (payloads: CreateRequestPayload[], successMessage: string): Promise<boolean> => {
       try {
-        const results = await createRequests(payloads);
+        const payloadsWithVisibility = payloads.map((p) => ({
+          ...p,
+          visibility: downloadVisibilityRef.current,
+        }));
+        const results = await createRequests(payloadsWithVisibility);
         await refreshActivitySnapshot();
         if (results.some(isQueuedDownloadResult)) {
           await fetchStatus();
@@ -1154,7 +1180,7 @@ function App() {
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
       const source = getBrowseSource(book);
       const directContentType: ContentType = 'ebook';
-      const payload = buildReleaseDataFromDirectBook(book);
+      const payload = { ...buildReleaseDataFromDirectBook(book), visibility: downloadVisibilityRef.current };
       const requestStartedAtSeconds = Date.now() / 1000;
       try {
         await downloadRelease(payload, onBehalfOfUserId);
@@ -1217,7 +1243,7 @@ function App() {
       try {
         trackRelease(book.id, release.source_id);
         await downloadRelease(
-          buildReleaseDownloadPayload(book, release, releaseContentType),
+          { ...buildReleaseDownloadPayload(book, release, releaseContentType), visibility: downloadVisibilityRef.current },
           onBehalfOfUserId,
         );
         await fetchStatus();
@@ -2376,6 +2402,9 @@ function App() {
 
   const mainAppContent = (
     <SearchModeProvider searchMode={effectiveSearchMode}>
+      {/* Floating book-cover background — visible only on the empty home screen */}
+      <BookFloatBackground visible={isInitialState} />
+
       <div ref={headerRef} className="fixed top-0 right-0 left-0 z-40">
         <Header
           calibreWebUrl={config?.calibre_web_url || ''}
@@ -2427,6 +2456,9 @@ function App() {
           activeQueryTarget={effectiveActiveQueryTarget}
           onQueryTargetChange={setActiveQueryTarget}
           activeQueryField={activeQueryField}
+          vpnConnected={vpnStatusData ? vpnStatusData.connected : null}
+          downloadVisibility={downloadVisibility}
+          onDownloadVisibilityChange={handleDownloadVisibilityChange}
         />
       </div>
 

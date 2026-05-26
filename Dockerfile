@@ -139,6 +139,10 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 
 FROM base AS shelfmark
+LABEL org.opencontainers.image.title="enhanced-shelfmark" \
+      org.opencontainers.image.description="Shelfmark with VPN, SAML2 SSO, user management, and enhanced features" \
+      org.opencontainers.image.source="https://github.com/proffbouwer/shelfmarkenhanced" \
+      org.opencontainers.image.vendor="proffbouwer"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
