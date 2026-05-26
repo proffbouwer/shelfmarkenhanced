@@ -28,7 +28,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
           rel="noopener noreferrer"
           className="text-sm font-medium opacity-70 transition-opacity hover:opacity-100"
         >
-          Shelfmark Enhanced
+          Shelfmark <span className="opacity-40 mx-0.5">~</span><span className="font-semibold" style={{ color: 'var(--accent, #6366f1)' }}>Enhanced</span>
         </a>
         <span
           className="text-xs font-normal opacity-40"
