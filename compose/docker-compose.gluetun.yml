@@ -47,12 +47,9 @@ services:
       FIREWALL_VPN_INPUT_PORTS: ""
       # HTTP control server (for Shelfmark VPN status)
       HTTP_CONTROL_SERVER_ADDRESS: ":8000"
-      # Allow unauthenticated read access to status endpoints
-      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: >-
-        {"routes":[
-          {"path":"/v1/publicip/ip","methods":["GET"]},
-          {"path":"/v1/vpn/status","methods":["GET"]}
-        ]}
+      # Allow unauthenticated access to the control API.
+      # The port is bound to 127.0.0.1 only so this is safe.
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: public
     restart: unless-stopped
     volumes:
       - gluetun_data:/gluetun

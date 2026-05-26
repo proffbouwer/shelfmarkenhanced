@@ -358,11 +358,8 @@ services:
       OPENVPN_PASSWORD: "${OPENVPN_PASSWORD}"           # OpenVPN only
       SERVER_COUNTRIES: "${SERVER_COUNTRIES:-}"         # Optional server selection
       HTTP_CONTROL_SERVER_ADDRESS: ":8000"
-      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: >-
-        {"routes":[
-          {"path":"/v1/publicip/ip","methods":["GET"]},
-          {"path":"/v1/vpn/status","methods":["GET"]}
-        ]}
+      # Port is bound to 127.0.0.1 only, so public access is safe here
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: public
     restart: unless-stopped
     volumes:
       - gluetun_data:/gluetun
