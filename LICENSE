@@ -1,6 +1,10 @@
 MIT License
 
-Copyright (c) 2024 CaliBrain
+Original work:
+Copyright (c) 2024 CaliBrain — https://github.com/calibrain/shelfmark
+
+Fork (Shelfmark Enhanced):
+Copyright (c) 2025 Shelfmark Enhanced Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +23,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+This project is a fork of Shelfmark (https://github.com/calibrain/shelfmark)
+and incorporates substantial portions of that original work. The original project
+is also distributed under the MIT License. All original copyright notices have
+been preserved in accordance with the licence terms.
+
+Shelfmark Enhanced is an independent community project. It is not affiliated
+with, endorsed by, or supported by CaliBrain or the original Shelfmark project.
+No commercial version of Shelfmark Enhanced exists or is planned.
