@@ -17,25 +17,25 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.2.4",
-    "motion": "^12.40.0",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-router-dom": "^7.14.2",
+    "@tailwindcss/vite": "^4.3.1",
+    "motion": "^12.42.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.0",
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "knip": "^6.6.2",
-    "oxfmt": "^0.46.0",
-    "oxlint": "^1.61.0",
-    "oxlint-tsgolint": "^0.21.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "knip": "^6.21.0",
+    "oxfmt": "^0.56.0",
+    "oxlint": "^1.71.0",
+    "oxlint-tsgolint": "^0.23.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
   }
 }
